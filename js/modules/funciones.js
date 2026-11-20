@@ -12,11 +12,12 @@ const KINDS = {
 };
 const PRE = {
   22: [
-    ['Tu ejemplo (afín)', ['2x + y', 'y - 1']],
+    ['Autovalores', ['2x + y', 'x + 2y']],
     ['Cizalla', ['x + y', 'y']],
     ['Rotación 90°', ['-y', 'x']],
     ['Escala', ['2x', '0.5y']],
     ['Proyección', ['x', '0']],
+    ['Afín: cizallar y bajar', ['2x + y', 'y - 1']],
     ['No lineal: parábola', ['x', 'y + x^2/4']],
     ['No lineal: ondas', ['x + 0.5sin(y)', 'y + 0.5sin(x)']],
   ],
@@ -28,6 +29,7 @@ const PRE = {
     ['No lineal: paraboloide', ['x', 'y', '(x^2 + y^2)/4']],
   ],
   33: [
+    ['Autovalores', ['2x + y', 'x + 2y', '3z']],
     ['Cizalla', ['x + z', 'y', 'z']],
     ['Rotación (eje z)', ['-y', 'x', 'z']],
     ['Escala', ['1.5x', 'y', '0.5z']],
@@ -171,11 +173,11 @@ export default {
     const phase = new Note(), cStep = new TexBox();
     const cTests = new TexBox(), nLin = new Note(), cM = new TexBox(), nM = new Note();
     const ex = vecEditor({ name: R`\vec x`, color: C.x, dim: n, get: () => shared.x[n], set: (v) => { stop(); shared.x[n] = v; update(); } });
-    const cX = new TexBox();
+    const cX = new TexBox(), nX = new Note();
 
     panel.append(
       ...intro('Transformaciones como funciones',
-        R`Una transformación es una <b>función</b>: entra un vector y sale otro. Aquí se escribe con fórmulas, como $T(x, y) = (2x + y,\ y - 1)$, y se ve aplicarse poco a poco. Luego se comprueba si es <b>lineal</b>, es decir, si respeta sumas y múltiplos. Las lineales son exactamente las que se pueden escribir con una matriz.`),
+        R`Una transformación es una <b>función</b>: entra un vector y sale otro. Aquí se escribe con fórmulas, como $T(x, y) = (2x + y,\ x + 2y)$, y se ve aplicarse poco a poco. Luego se comprueba si es <b>lineal</b>, es decir, si respeta sumas y múltiplos. Las lineales son exactamente las que se pueden escribir con una matriz.`),
       card('Tipo', kindChips.el, rich(D === 2 ? R`$\mathbb{R}^2 \to \mathbb{R}^2$ se ve en la vista 2D; los demás tipos abren la vista 3D.` : R`En 3D, $\mathbb{R}^2$ es el plano $z = 0$. ${n === 3 && m === 2 ? 'La salida cae en ese plano.' : n === 2 ? 'La entrada es ese plano y la salida puede salirse de él.' : ''}`, 'p', 'note')),
       card('La fórmula', h('div', { class: 'expr-box' }, ...fields.map((f) => f.row)), errNote.el, pre, cT.el,
         rich(R`Se puede escribir $2x$, $x\cdot y$, $x^2$, $(x+y)/2$, $\sin(y)$, $\cos$, $\exp$, $\sqrt{\ }$… Las variables son ${vars.map((v) => `$${v}$`).join(', ')}.`, 'p', 'note')),
@@ -184,7 +186,7 @@ export default {
         phase.el, cStep.el),
       card('¿Es lineal?', cTests.el, nLin.el),
       card('La matriz', cM.el, nM.el),
-      card('Un vector x', ex.el, cX.el),
+      card('Un vector x', ex.el, cX.el, nX.el),
       details('Definición formal',
         rich(R`Una función $T: \mathbb{R}^n \to \mathbb{R}^m$ es <b>lineal</b> si para todos los vectores $\vec u, \vec v$ y todo escalar $c$: $T(\vec u + \vec v) = T(\vec u) + T(\vec v)$ y $T(c\vec u) = c\,T(\vec u)$. De ahí sale gratis $T(\vec 0) = \vec 0$ (tomando $c = 0$).`),
         rich(R`<b>Teorema:</b> $T$ es lineal si y solo si existe una matriz $A$ de $m\times n$ con $T(\vec x) = A\vec x$. Su columna $j$ es $T(\vec e_j)$: como $\vec x = x_1\vec e_1 + \dots + x_n\vec e_n$, la linealidad da $T(\vec x) = x_1T(\vec e_1) + \dots + x_nT(\vec e_n)$.`),
@@ -192,11 +194,16 @@ export default {
         rich(R`Una transformación <b>afín</b> es $T(\vec x) = A\vec x + \vec b$: lineal más una traslación. No es lineal (si $\vec b \ne \vec 0$), pero conserva rectas y paralelas. En gráficos por computadora se vuelve lineal agregando una coordenada extra (coordenadas homogéneas).`),
         rich(R`Las pruebas con vectores concretos solo pueden <b>refutar</b> la linealidad. Para demostrarla hay que verlo en general, por ejemplo, encontrando la matriz.`)),
       tryList([
-        R`Con «Tu ejemplo (afín)», pulsa «Siguiente paso» dos veces: primero cambia solo $x'$ (la rejilla se cizalla), luego $y'$ (todo baja una unidad). El punto rosa es la imagen del origen: si se mueve, no es lineal.`,
-        R`Borra el «− 1» de la fórmula: pasa a ser lineal y aparece la matriz.`,
+        n === 2 && m === 2
+          ? R`Con «Autovalores», pon $\vec x = (1, 1)$: sale $T(\vec x) = (3, 3) = 3\vec x$, solo se estira (autovalor 3). Con $\vec x = (1, -1)$ sale el mismo vector (autovalor 1). Cualquier otro $\vec x$ cambia de dirección.`
+          : n === 3 && m === 3
+            ? R`Con «Autovalores», pon $\vec x = (1, 1, 0)$ o $(0, 0, 1)$: $T(\vec x) = 3\vec x$. Con $(1, -1, 0)$: $T(\vec x) = \vec x$. Esos son los autovectores; los demás vectores cambian de dirección.`
+            : R`Los autovalores solo tienen sentido cuando entrada y salida son el mismo espacio ($\mathbb{R}^2 \to \mathbb{R}^2$ o $\mathbb{R}^3 \to \mathbb{R}^3$): aquí $T(\vec x)$ y $\vec x$ viven en espacios distintos, no se pueden comparar.`,
+        n === 2 && m === 2 ? R`Con «Afín: cizallar y bajar», pulsa «Siguiente paso» dos veces: primero cambia solo $x'$ (la rejilla se cizalla), luego $y'$ (todo baja una unidad). El punto rosa es la imagen del origen: si se mueve, no es lineal.` : null,
+        n === 2 && m === 2 ? R`En esa misma afín, borra el «− 1» de la fórmula: pasa a ser lineal y aparece la matriz.` : null,
         R`Prueba una fórmula no lineal: la rejilla se <b>curva</b>. Las lineales siempre mandan rectas a rectas y conservan el espaciado de la rejilla.`,
         n === 3 && m === 2 ? R`En $\mathbb{R}^3 \to \mathbb{R}^2$, el último paso descarta la $z$: todo el espacio cae al plano.` : n === 2 && m === 3 ? R`En $\mathbb{R}^2 \to \mathbb{R}^3$, el último paso levanta el plano: aparece la tercera coordenada.` : R`Cambia a «Parte lineal, luego traslación» con una afín: se ve $A\vec x$ y después $+\vec b$.`,
-      ]),
+      ].filter(Boolean)),
     );
 
     function refreshAll() {
@@ -284,6 +291,10 @@ export default {
       // --- vector x ---
       const sub1 = trees.map((t) => texExpr(t, env(x)));
       cX.set(R`T${R`\begin{pmatrix}${x.map((a) => fmt(a)).join('\\\\')}\end{pmatrix}`} = \begin{bmatrix}${sub1.join('\\\\')}\end{bmatrix} = ${V(Tx)}${info.type === 'lineal' ? R` = ${x.map((a, j) => `${a < 0 ? `(${fmt(a)})` : fmt(a)}\\,${colTex(j)}`).join(' + ')}` : ''}`);
+      const nxx = norm(x), lam = n === m && nxx > 1e-9 && ok ? Tx.reduce((acc, t, i) => acc + t * x[i], 0) / (nxx * nxx) : null;
+      if (lam == null || info.type !== 'lineal') nX.set('', '');
+      else if (norm(sub(Tx, scale(x, lam))) < 1e-9 * (1 + norm(Tx))) nX.set('pos', R`<b>$\vec x$ es un autovector:</b> $T(\vec x) = ${fmt(lam) === '1' ? '' : fmt(lam) === '-1' ? '-' : `${fmt(lam)}\\,`}\vec x$. La transformación solo lo ${Math.abs(lam) < 1e-9 ? 'aplasta a $\\vec 0$' : lam < 0 ? 'estira y lo voltea' : Math.abs(lam - 1) < 1e-9 ? 'deja igual' : 'estira'}, sin cambiarle la dirección. El autovalor es $\lambda = ${fmt(lam)}$.`);
+      else nX.set('', R`$T(\vec x)$ no es un múltiplo de $\vec x$: este $\vec x$ no es autovector. Busca direcciones donde la flecha amarilla quede sobre la recta de $\vec x$.`);
     }
 
     refreshAll();
