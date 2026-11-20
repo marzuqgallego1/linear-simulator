@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Álgebra lineal visual</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "katex": "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.mjs"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">Álgebra lineal<small>visual e interactiva</small></div>
+      <nav id="nav"></nav>
+    </aside>
+
+    <main id="viewport">
+      <div id="stage"></div>
+      <div id="toolbar">
+        <div class="seg">
+          <button data-dim="2">2D</button>
+          <button data-dim="3">3D</button>
+        </div>
+        <label class="snap">Ajuste
+          <select id="snap">
+            <option value="1">1</option>
+            <option value="0.5" selected>0.5</option>
+            <option value="0.1">0.1</option>
+            <option value="0">libre</option>
+          </select>
+        </label>
+        <button id="recenter">Recentrar</button>
+      </div>
+      <div id="hint"></div>
+    </main>
+
+    <section id="panel"></section>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
