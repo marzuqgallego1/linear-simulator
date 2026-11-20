@@ -81,20 +81,35 @@ export function vecEditor({ name, color, dim, get, set }) {
   return { el, refresh: () => ins.forEach((i) => i.refresh()) };
 }
 
-/** Editor de matriz; cada columna se pinta del color de su vector base. */
-export function matEditor({ dim, get, set, colors, name = 'A' }) {
+/** Editor de matriz (cuadrada o de rows × cols); cada columna se pinta del color de su vector base. */
+export function matEditor({ dim, rows = dim, cols = dim, get, set, colors = [], name = 'A' }) {
   const cells = [];
-  const grid = h('div', { class: 'bracket', style: `grid-template-columns: repeat(${dim}, auto)` });
-  for (let r = 0; r < dim; r++)
-    for (let c = 0; c < dim; c++) {
+  const grid = h('div', { class: 'bracket', style: `grid-template-columns: repeat(${cols}, auto)` });
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++) {
       const n = numInput(() => get()[r][c], (x) => { const A = get().map((row) => [...row]); A[r][c] = x; set(A); });
-      n.el.style.color = colors[c];
-      n.el.style.borderColor = colors[c] + '66';
+      if (colors[c]) {
+        n.el.style.color = colors[c];
+        n.el.style.borderColor = colors[c] + '66';
+      }
       grid.append(n.el);
       cells.push(n);
     }
   const el = h('div', { class: 'mat-editor' }, h('span', { class: 'name' }, tex(name)), '=', grid);
   return { el, refresh: () => cells.forEach((c) => c.refresh()) };
+}
+
+/** Selector de tamaño «filas × columnas» para una matriz. */
+export function sizePicker({ max, get, set }) {
+  const mk = (k) => {
+    const sel = h('select', { class: 'size', onchange: () => { const v = [...get()]; v[k] = +sel.value; set(v); } },
+      Array.from({ length: max }, (_, i) => h('option', { value: i + 1 }, i + 1)));
+    return sel;
+  };
+  const a = mk(0), b = mk(1);
+  const refresh = () => { [a.value, b.value] = get().map(String); };
+  refresh();
+  return { el: h('span', { class: 'size-picker' }, a, '×', b), refresh };
 }
 
 export function slider({ label, min, max, step, get, set, format = (x) => fmt(x) }) {

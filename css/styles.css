@@ -146,6 +146,14 @@ details.card[open] summary { margin-bottom: 8px; }
 .bracket::before { left: 0; border-right: none; }
 .bracket::after { right: 0; border-left: none; }
 
+.size-picker { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+select.size {
+  padding: 3px 4px; background: #0f1218; color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: inherit;
+}
+.mat-block { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 8px; }
+.mat-block .size-picker { font-size: 13px; }
+
 input.num {
   width: 62px; padding: 4px 4px; text-align: center;
   background: #0f1218; color: var(--text);
