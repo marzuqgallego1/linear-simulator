@@ -30,10 +30,11 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 12 | Transpuesta (simétricas, ortogonales, producto punto) | ✓ | ✓ |
 | 13 | Determinante (área / volumen con signo) | ✓ | ✓ |
 | 14 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
-| 15 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
-| 16 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
-| 17 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
-| 18 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
+| 15 | Rango, núcleo y nulidad (imagen, teorema del rango) | ✓ | ✓ |
+| 16 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
+| 17 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
+| 18 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
+| 19 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
 
 ## Estructura
 
