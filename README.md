@@ -16,20 +16,24 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 
 | # | Tema | 2D | 3D |
 |---|------|----|----|
-| 1 | Vectores y combinación lineal (span, independencia) | ✓ | ✓ |
-| 2 | Producto punto (proyección, ángulo) | ✓ | ✓ |
-| 3 | Producto cruz (área, regla de la mano derecha) | – | ✓ |
-| 4 | Rectas (vector director, ecuaciones, distancia a un punto) | ✓ | ✓ |
-| 5 | Planos (vector normal, directores, distancia a un punto) | – | ✓ |
-| 6 | Intersecciones (recta–recta, recta–plano, plano–plano) | ✓ | ✓ |
-| 7 | Sistemas Ax = b (filas, columnas, Gauss-Jordan, rangos) | ✓ | ✓ |
-| 8 | Matriz como transformación | ✓ | ✓ |
-| 9 | Determinante (área / volumen con signo) | ✓ | ✓ |
-| 10 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
-| 11 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
-| 12 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
-| 13 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
-| 14 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
+| 1 | Operaciones con vectores (suma, resta, escalar, norma, distancia) | ✓ | ✓ |
+| 2 | Vectores y combinación lineal (span, independencia) | ✓ | ✓ |
+| 3 | Producto punto (proyección, ángulo) | ✓ | ✓ |
+| 4 | Producto cruz (área, regla de la mano derecha) | – | ✓ |
+| 5 | Rectas (vector director, ecuaciones, distancia a un punto) | ✓ | ✓ |
+| 6 | Planos (vector normal, directores, distancia a un punto) | – | ✓ |
+| 7 | Intersecciones (recta–recta, recta–plano, plano–plano) | ✓ | ✓ |
+| 8 | Sistemas Ax = b (filas, columnas, Gauss-Jordan, rangos) | ✓ | ✓ |
+| 9 | Matriz como transformación | ✓ | ✓ |
+| 10 | Suma de matrices y producto por escalar | ✓ | ✓ |
+| 11 | Producto de matrices (composición, AB ≠ BA, potencias) | ✓ | ✓ |
+| 12 | Transpuesta (simétricas, ortogonales, producto punto) | ✓ | ✓ |
+| 13 | Determinante (área / volumen con signo) | ✓ | ✓ |
+| 14 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
+| 15 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
+| 16 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
+| 17 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
+| 18 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
 
 ## Estructura
 

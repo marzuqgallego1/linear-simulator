@@ -14,12 +14,16 @@ import base from './modules/base.js';
 import autovalores from './modules/autovalores.js';
 import gramschmidt from './modules/gramschmidt.js';
 import minimos from './modules/minimos.js';
+import opvectores from './modules/opvectores.js';
+import sumamat from './modules/sumamat.js';
+import producto from './modules/producto.js';
+import transpuesta from './modules/transpuesta.js';
 
 // Orden del curso. Para añadir un tema: crear el módulo y agregarlo aquí.
 const SECTIONS = [
-  ['Vectores', [vectores, punto, cruz]],
+  ['Vectores', [opvectores, vectores, punto, cruz]],
   ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
-  ['Matrices', [transformacion, determinante, inversa, base, autovalores]],
+  ['Matrices', [transformacion, sumamat, producto, transpuesta, determinante, inversa, base, autovalores]],
   ['Ortogonalidad', [gramschmidt, minimos]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);
