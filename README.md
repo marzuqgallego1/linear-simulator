@@ -35,10 +35,11 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 17 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
 | 18 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
 | 19 | Diagonalización y potencias (A = PDP⁻¹, Aᵏ, autovalor dominante) | ✓ | ✓ |
-| 20 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
-| 21 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
-| 22 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
-| 23 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
+| 20 | Proyecciones ortogonales (P² = P, Pᵀ = P, complemento ortogonal) | ✓ | ✓ |
+| 21 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
+| 22 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
+| 23 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
+| 24 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
 
 ## Estructura
 

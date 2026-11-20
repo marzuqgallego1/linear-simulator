@@ -13,6 +13,7 @@ import sistemas from './modules/sistemas.js';
 import base from './modules/base.js';
 import autovalores from './modules/autovalores.js';
 import diagonalizacion from './modules/diagonalizacion.js';
+import proyecciones from './modules/proyecciones.js';
 import gramschmidt from './modules/gramschmidt.js';
 import minimos from './modules/minimos.js';
 import opvectores from './modules/opvectores.js';
@@ -29,7 +30,7 @@ const SECTIONS = [
   ['Vectores', [opvectores, vectores, punto, cruz]],
   ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
   ['Matrices', [transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, lu, base, autovalores, diagonalizacion]],
-  ['Ortogonalidad', [gramschmidt, qr, minimos, svd]],
+  ['Ortogonalidad', [proyecciones, gramschmidt, qr, minimos, svd]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);
 
