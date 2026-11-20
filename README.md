@@ -28,6 +28,8 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 10 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
 | 11 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
 | 12 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
+| 13 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
+| 14 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
 
 ## Estructura
 
