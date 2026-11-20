@@ -40,6 +40,7 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 22 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
 | 23 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
 | 24 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
+| 25 | Formas cuadráticas (ejes principales, definida/indefinida, cónicas y cuádricas) | ✓ | ✓ |
 
 ## Estructura
 
