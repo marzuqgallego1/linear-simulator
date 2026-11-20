@@ -252,3 +252,144 @@ export function polyTex(coefs, v = '\\lambda') {
   });
   return out || '0';
 }
+
+// ---------- Factorizaciones (QR, LU, SVD) ----------
+
+export const transpose = (A) => A[0].map((_, j) => A.map((r) => r[j]));
+const cleanM = (A) => A.map((r) => r.map((x) => (Math.abs(x) < 1e-12 ? 0 : x)));
+
+/** A = QR por Gram-Schmidt sobre las columnas. failAt = índice de la primera columna dependiente (o -1). */
+export function qrDecomp(A) {
+  const n = A.length, cols = transpose(A), qs = [];
+  const Rm = A.map(() => Array(n).fill(0));
+  for (let j = 0; j < n; j++) {
+    let w = cols[j];
+    for (let i = 0; i < qs.length; i++) { Rm[i][j] = dot(qs[i], cols[j]); w = sub(w, scale(qs[i], Rm[i][j])); }
+    const l = norm(w);
+    if (l < 1e-9) return { Q: null, R: cleanM(Rm), qs, failAt: j };
+    Rm[j][j] = l;
+    qs.push(scale(w, 1 / l));
+  }
+  return { Q: cleanM(transpose(qs)), R: cleanM(Rm), qs, failAt: -1 };
+}
+
+/**
+ * PA = LU (Doolittle). Solo intercambia filas cuando el pivote es 0, para que los pasos
+ * coincidan con lo que se haría a mano. steps: [{ kind:'swap'|'elim'|'skip', op, U, L, r, c, m }].
+ */
+export function luDecomp(A) {
+  const n = A.length;
+  const U = A.map((r) => [...r]), L = identity(n), perm = [...Array(n).keys()];
+  const steps = [];
+  const snap = (s) => steps.push({ ...s, U: cleanM(U), L: cleanM(L), perm: [...perm] });
+  for (let c = 0; c < n; c++) {
+    let p = -1;
+    for (let r = c; r < n; r++) if (Math.abs(U[r][c]) > EPS) { p = r; break; }
+    if (p < 0) { snap({ kind: 'skip', c, op: `\\text{columna ${c + 1}: sin pivote}` }); continue; }
+    if (p !== c) {
+      [U[p], U[c]] = [U[c], U[p]];
+      [perm[p], perm[c]] = [perm[c], perm[p]];
+      for (let k = 0; k < c; k++) [L[p][k], L[c][k]] = [L[c][k], L[p][k]];
+      snap({ kind: 'swap', r: p, c, op: `F_${c + 1} \\leftrightarrow F_${p + 1}` });
+    }
+    for (let r = c + 1; r < n; r++) {
+      const m = U[r][c] / U[c][c];
+      if (Math.abs(m) < EPS) continue;
+      U[r] = U[r].map((x, k) => tidy(x - m * U[c][k]));
+      U[r][c] = 0;
+      L[r][c] = m;
+      snap({ kind: 'elim', r, c, m, op: `F_${r + 1} \\leftarrow F_${r + 1} ${m > 0 ? '-' : '+'} ${fmt(Math.abs(m)) === '1' ? '' : fmt(Math.abs(m))}F_${c + 1}` });
+    }
+  }
+  const P = perm.map((i) => identity(n)[i]);
+  return { L: cleanM(L), U: cleanM(U), P, perm, steps };
+}
+
+/** Autovalores y autovectores de una matriz simétrica (método de Jacobi). Ordenados de mayor a menor. */
+export function symEigen(S) {
+  const n = S.length;
+  const A = S.map((r) => [...r]), V = identity(n);
+  for (let sweep = 0; sweep < 60; sweep++) {
+    let off = 0;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += A[p][q] ** 2;
+    if (off < 1e-22) break;
+    for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+      if (Math.abs(A[p][q]) < 1e-15) continue;
+      const th = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+      const t = Math.sign(th || 1) / (Math.abs(th) + Math.sqrt(th * th + 1));
+      const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+      for (let k = 0; k < n; k++) {
+        const akp = A[k][p], akq = A[k][q];
+        A[k][p] = c * akp - s * akq; A[k][q] = s * akp + c * akq;
+      }
+      for (let k = 0; k < n; k++) {
+        const apk = A[p][k], aqk = A[q][k];
+        A[p][k] = c * apk - s * aqk; A[q][k] = s * apk + c * aqk;
+      }
+      for (let k = 0; k < n; k++) {
+        const vkp = V[k][p], vkq = V[k][q];
+        V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq;
+      }
+    }
+  }
+  return [...Array(n).keys()].map((i) => ({ value: A[i][i], vector: col(V, i) })).sort((a, b) => b.value - a.value);
+}
+
+/** Completa una lista de vectores ortonormales hasta una base de R^n. */
+function completeBasis(us, n) {
+  const out = [...us];
+  for (let k = 0; k < n && out.length < n; k++) {
+    let w = identity(n)[k];
+    for (const u of out) w = sub(w, scale(u, dot(w, u)));
+    if (norm(w) > 1e-6) out.push(scale(w, 1 / norm(w)));
+  }
+  return out;
+}
+
+/**
+ * A = U Σ Vᵀ. V sale de los autovectores de AᵀA, σ = √λ, u_i = A v_i / σ_i.
+ * Se elige V con det = +1, y U también cuando hay un σ = 0 (libertad de signo); si det A < 0, U es una reflexión.
+ */
+export function svd(A) {
+  const n = A.length;
+  const eig = symEigen(matMul(transpose(A), A));
+  const vs = eig.map((e) => normalize(e.vector));
+  if (det(transpose(vs)) < 0) vs[n - 1] = scale(vs[n - 1], -1);
+  const sig = eig.map((e) => Math.sqrt(Math.max(e.value, 0)));
+  const tol = 1e-7 * Math.max(1, sig[0]);
+  const rank = sig.filter((s) => s > tol).length;
+  const us = completeBasis(vs.slice(0, rank).map((v, i) => scale(matVec(A, v), 1 / sig[i])), n);
+  if (rank < n && det(transpose(us)) < 0) us[n - 1] = scale(us[n - 1], -1);
+  return {
+    U: cleanM(transpose(us)), V: cleanM(transpose(vs)), us, vs,
+    sigma: sig.map((s, i) => (i < rank ? s : 0)), rank,
+  };
+}
+
+/** Rotación R elevada a t (0 → I, 1 → R), interpolando el ángulo de verdad. */
+export function rotPow(Rm, t) {
+  const n = Rm.length;
+  if (n === 2) {
+    const a = Math.atan2(Rm[1][0], Rm[0][0]) * t;
+    return [[Math.cos(a), -Math.sin(a)], [Math.sin(a), Math.cos(a)]];
+  }
+  const th = Math.acos(clamp((Rm[0][0] + Rm[1][1] + Rm[2][2] - 1) / 2, -1, 1));
+  if (th < 1e-9) return identity(3);
+  let k;
+  if (th < Math.PI - 1e-6) k = normalize([Rm[2][1] - Rm[1][2], Rm[0][2] - Rm[2][0], Rm[1][0] - Rm[0][1]]);
+  else {
+    const B = Rm.map((r, i) => r.map((x, j) => x + (i === j ? 1 : 0)));
+    k = normalize(transpose(B).reduce((a, c) => (norm(c) > norm(a) ? c : a)));
+  }
+  const K = [[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]], K2 = matMul(K, K);
+  const s = Math.sin(th * t), c1 = 1 - Math.cos(th * t);
+  return identity(3).map((r, i) => r.map((x, j) => x + s * K[i][j] + c1 * K2[i][j]));
+}
+
+/** Camino de I a la matriz ortogonal Q: giro continuo y, si Q refleja, el último eje se voltea al final. */
+export function orthoPath(Q, t) {
+  const n = Q.length;
+  if (det(Q) > 0) return rotPow(Q, t);
+  const F = identity(n); F[n - 1][n - 1] = -1;
+  return matMul(rotPow(matMul(Q, F), t), lerpMat(identity(n), F, t));
+}

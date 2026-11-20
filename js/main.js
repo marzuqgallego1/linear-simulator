@@ -19,13 +19,16 @@ import sumamat from './modules/sumamat.js';
 import producto from './modules/producto.js';
 import transpuesta from './modules/transpuesta.js';
 import nucleo from './modules/nucleo.js';
+import lu from './modules/lu.js';
+import qr from './modules/qr.js';
+import svd from './modules/svd.js';
 
 // Orden del curso. Para añadir un tema: crear el módulo y agregarlo aquí.
 const SECTIONS = [
   ['Vectores', [opvectores, vectores, punto, cruz]],
   ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
-  ['Matrices', [transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, base, autovalores]],
-  ['Ortogonalidad', [gramschmidt, minimos]],
+  ['Matrices', [transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, lu, base, autovalores]],
+  ['Ortogonalidad', [gramschmidt, qr, minimos, svd]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);
 

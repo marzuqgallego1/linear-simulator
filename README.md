@@ -31,10 +31,13 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 13 | Determinante (área / volumen con signo) | ✓ | ✓ |
 | 14 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
 | 15 | Rango, núcleo y nulidad (imagen, teorema del rango) | ✓ | ✓ |
-| 16 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
-| 17 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
-| 18 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
-| 19 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
+| 16 | Factorización LU (eliminación guardada, PA = LU, sustitución) | ✓ | ✓ |
+| 17 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
+| 18 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
+| 19 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
+| 20 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
+| 21 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
+| 22 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
 
 ## Estructura
 
