@@ -178,3 +178,77 @@ export const taug = (M) => {
   const n = M[0].length - 1;
   return `\\left[\\begin{array}{${'c'.repeat(n)}|c}${M.map((r) => r.map((x) => fmt(x)).join('&')).join('\\\\')}\\end{array}\\right]`;
 };
+
+// ---------- Autovalores (solo raíces reales) ----------
+
+/** Redondea a un valor "bonito" si está muy cerca (evita 2.9999999 en vez de 3). */
+const snapNice = (x) => {
+  const r = Math.round(x * 1000) / 1000;
+  return Math.abs(x - r) < 1e-7 ? r : x;
+};
+
+/** Raíces reales distintas de λ³ + aλ² + bλ + c = 0, de mayor a menor. */
+export function cubicRoots(a, b, c) {
+  const f = (x) => ((x + a) * x + b) * x + c;
+  const df = (x) => (3 * x + 2 * a) * x + b;
+  const p = b - (a * a) / 3, q = (2 * a * a * a) / 27 - (a * b) / 3 + c;
+  const D = (q * q) / 4 + (p * p * p) / 27;
+  const tol = 1e-10 * (1 + q * q + Math.abs(p * p * p));
+  let ys;
+  if (Math.abs(p) < 1e-12 && Math.abs(q) < 1e-12) ys = [0];
+  else if (D > tol) ys = [Math.cbrt(-q / 2 + Math.sqrt(D)) + Math.cbrt(-q / 2 - Math.sqrt(D))];
+  else if (D > -tol) ys = [2 * Math.cbrt(-q / 2), -Math.cbrt(-q / 2)];
+  else {
+    const r = 2 * Math.sqrt(-p / 3);
+    const phi = Math.acos(clamp((3 * q) / (p * r), -1, 1));
+    ys = [0, 1, 2].map((k) => r * Math.cos(phi / 3 - (2 * Math.PI * k) / 3));
+  }
+  const roots = ys.map((y) => {
+    let x = y - a / 3;
+    for (let i = 0; i < 4; i++) { const d = df(x); if (Math.abs(d) > 1e-12) x -= f(x) / d; }
+    return snapNice(x);
+  });
+  return roots.sort((u, v) => v - u).filter((x, i, arr) => i === 0 || Math.abs(x - arr[i - 1]) > 1e-6);
+}
+
+/**
+ * Autovalores reales de A (2×2 o 3×3) con la base de cada espacio propio.
+ * Devuelve { poly: coeficientes de det(λI − A) de mayor a menor grado, values: [{ lambda, vectors }] }.
+ */
+export function eigen(A) {
+  const n = A.length;
+  const tr = A.reduce((s, r, i) => s + r[i], 0);
+  let poly, roots;
+  if (n === 2) {
+    const d = det(A), disc = tr * tr - 4 * d;
+    poly = [1, -tr, d];
+    if (disc < -1e-10) roots = [];
+    else if (Math.abs(disc) <= 1e-10) roots = [snapNice(tr / 2)];
+    else roots = [snapNice((tr + Math.sqrt(disc)) / 2), snapNice((tr - Math.sqrt(disc)) / 2)];
+  } else {
+    const m = minor3(A, 0, 0) + minor3(A, 1, 1) + minor3(A, 2, 2);
+    const d = det(A);
+    poly = [1, -tr, m, -d];
+    roots = cubicRoots(-tr, m, -d);
+  }
+  const values = roots.map((lambda) => {
+    const B = A.map((r, i) => r.map((x, j) => x - (i === j ? lambda : 0)));
+    return { lambda, B, vectors: solveSystem(B, zero(n)).nullBasis };
+  });
+  return { tr, poly, values };
+}
+
+/** Polinomio en λ en LaTeX: coeficientes de mayor a menor grado. */
+export function polyTex(coefs, v = '\\lambda') {
+  const deg0 = coefs.length - 1;
+  let out = '';
+  coefs.forEach((c, i) => {
+    const s = fmt(c);
+    if (s === '0') return;
+    const k = deg0 - i, neg = s.startsWith('-'), a = neg ? s.slice(1) : s;
+    const pw = k === 0 ? '' : k === 1 ? v : `${v}^${k}`;
+    const term = (a === '1' && k > 0 ? '' : a) + pw;
+    out += out ? (neg ? ' - ' : ' + ') + term : (neg ? '-' : '') + term;
+  });
+  return out || '0';
+}

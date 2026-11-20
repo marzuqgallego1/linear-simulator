@@ -27,6 +27,7 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 9 | Determinante (área / volumen con signo) | ✓ | ✓ |
 | 10 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
 | 11 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
+| 12 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
 
 ## Estructura
 

@@ -11,12 +11,13 @@ import planos from './modules/planos.js';
 import intersecciones from './modules/intersecciones.js';
 import sistemas from './modules/sistemas.js';
 import base from './modules/base.js';
+import autovalores from './modules/autovalores.js';
 
 // Orden del curso. Para añadir un tema: crear el módulo y agregarlo aquí.
 const SECTIONS = [
   ['Vectores', [vectores, punto, cruz]],
   ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
-  ['Matrices', [transformacion, determinante, inversa, base]],
+  ['Matrices', [transformacion, determinante, inversa, base, autovalores]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);
 
