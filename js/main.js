@@ -3,6 +3,7 @@ import { h } from './core/ui.js';
 import vectores from './modules/vectores.js';
 import punto from './modules/punto.js';
 import cruz from './modules/cruz.js';
+import funciones from './modules/funciones.js';
 import transformacion from './modules/transformacion.js';
 import determinante from './modules/determinante.js';
 import inversa from './modules/inversa.js';
@@ -30,7 +31,7 @@ import cuadraticas from './modules/cuadraticas.js';
 const SECTIONS = [
   ['Vectores', [opvectores, vectores, punto, cruz]],
   ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
-  ['Matrices', [transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, lu, base, autovalores, diagonalizacion]],
+  ['Matrices', [funciones, transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, lu, base, autovalores, diagonalizacion]],
   ['Ortogonalidad', [proyecciones, gramschmidt, qr, minimos, svd, cuadraticas]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);

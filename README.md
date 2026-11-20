@@ -24,23 +24,24 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 6 | Planos (vector normal, directores, distancia a un punto) | – | ✓ |
 | 7 | Intersecciones (recta–recta, recta–plano, plano–plano) | ✓ | ✓ |
 | 8 | Sistemas Ax = b (filas, columnas, Gauss-Jordan, rangos) | ✓ | ✓ |
-| 9 | Matriz como transformación | ✓ | ✓ |
-| 10 | Suma de matrices y producto por escalar | ✓ | ✓ |
-| 11 | Producto de matrices (composición, AB ≠ BA, potencias) | ✓ | ✓ |
-| 12 | Transpuesta (simétricas, ortogonales, producto punto) | ✓ | ✓ |
-| 13 | Determinante (área / volumen con signo) | ✓ | ✓ |
-| 14 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
-| 15 | Rango, núcleo y nulidad (imagen, teorema del rango) | ✓ | ✓ |
-| 16 | Factorización LU (eliminación guardada, PA = LU, sustitución) | ✓ | ✓ |
-| 17 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
-| 18 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
-| 19 | Diagonalización y potencias (A = PDP⁻¹, Aᵏ, autovalor dominante) | ✓ | ✓ |
-| 20 | Proyecciones ortogonales (P² = P, Pᵀ = P, complemento ortogonal) | ✓ | ✓ |
-| 21 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
-| 22 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
-| 23 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
-| 24 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
-| 25 | Formas cuadráticas (ejes principales, definida/indefinida, cónicas y cuádricas) | ✓ | ✓ |
+| 9 | Transformaciones como funciones (fórmulas, paso a paso, ¿es lineal?, ℝ²/ℝ³) | ✓ | ✓ |
+| 10 | Matriz como transformación | ✓ | ✓ |
+| 11 | Suma de matrices y producto por escalar | ✓ | ✓ |
+| 12 | Producto de matrices (composición, AB ≠ BA, potencias) | ✓ | ✓ |
+| 13 | Transpuesta (simétricas, ortogonales, producto punto) | ✓ | ✓ |
+| 14 | Determinante (área / volumen con signo) | ✓ | ✓ |
+| 15 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
+| 16 | Rango, núcleo y nulidad (imagen, teorema del rango) | ✓ | ✓ |
+| 17 | Factorización LU (eliminación guardada, PA = LU, sustitución) | ✓ | ✓ |
+| 18 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
+| 19 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
+| 20 | Diagonalización y potencias (A = PDP⁻¹, Aᵏ, autovalor dominante) | ✓ | ✓ |
+| 21 | Proyecciones ortogonales (P² = P, Pᵀ = P, complemento ortogonal) | ✓ | ✓ |
+| 22 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
+| 23 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
+| 24 | Mínimos cuadrados (ajuste de recta; proyección en 3D) | ✓ | ✓ |
+| 25 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
+| 26 | Formas cuadráticas (ejes principales, definida/indefinida, cónicas y cuádricas) | ✓ | ✓ |
 
 ## Estructura
 
@@ -53,6 +54,7 @@ js/core/stage.js      escena 2D/3D, flechas, rejillas, puntos arrastrables
 js/core/ui.js         controles del panel (editores de vector/matriz, sliders)
 js/core/presets.js    vectores base y matrices de ejemplo
 js/core/geom.js       rectas, planos e intersecciones (dibujo y fórmulas)
+js/core/expr.js       lector de fórmulas escritas por el usuario (sin eval)
 js/modules/*.js       un archivo por tema
 ```
 

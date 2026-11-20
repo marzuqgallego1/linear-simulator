@@ -192,3 +192,13 @@ ul.try li { margin: 6px 0; }
   #viewport { height: 58vh; }
   #panel { border-left: none; overflow: visible; padding: 16px; }
 }
+
+/* Fórmulas escritas por el usuario (Transformaciones como funciones) */
+.expr-box { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+.expr-row { display: grid; grid-template-columns: 26px 14px 1fr; align-items: center; gap: 4px; }
+input.expr {
+  width: 100%; padding: 6px 8px; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #0f1218; color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+}
+input.expr:focus { outline: none; border-color: var(--accent); }
+input.expr.bad { border-color: #ff6b6b; }
