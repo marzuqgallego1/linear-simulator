@@ -9,11 +9,12 @@ import inversa from './modules/inversa.js';
 import rectas from './modules/rectas.js';
 import planos from './modules/planos.js';
 import intersecciones from './modules/intersecciones.js';
+import sistemas from './modules/sistemas.js';
 
 // Orden del curso. Para añadir un tema: crear el módulo y agregarlo aquí.
 const SECTIONS = [
   ['Vectores', [vectores, punto, cruz]],
-  ['Geometría', [rectas, planos, intersecciones]],
+  ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
   ['Matrices', [transformacion, determinante, inversa]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);

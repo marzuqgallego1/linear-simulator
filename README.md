@@ -7,7 +7,7 @@ Aplicación web interactiva para ver qué significan las operaciones de álgebra
 No necesita instalación ni compilación. Desde esta carpeta:
 
 ```bash
-python3 -m http.server 5173
+python3 serve.py
 ```
 
 Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para cargar Three.js y KaTeX desde CDN).
@@ -22,9 +22,10 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 4 | Rectas (vector director, ecuaciones, distancia a un punto) | ✓ | ✓ |
 | 5 | Planos (vector normal, directores, distancia a un punto) | – | ✓ |
 | 6 | Intersecciones (recta–recta, recta–plano, plano–plano) | ✓ | ✓ |
-| 7 | Matriz como transformación | ✓ | ✓ |
-| 8 | Determinante (área / volumen con signo) | ✓ | ✓ |
-| 9 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
+| 7 | Sistemas Ax = b (filas, columnas, Gauss-Jordan, rangos) | ✓ | ✓ |
+| 8 | Matriz como transformación | ✓ | ✓ |
+| 9 | Determinante (área / volumen con signo) | ✓ | ✓ |
+| 10 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
 
 ## Estructura
 

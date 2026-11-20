@@ -110,3 +110,71 @@ export function combo(terms) {
     })
     .join('');
 }
+
+// ---------- Sistemas de ecuaciones ----------
+
+const tidy = (x) => (Math.abs(x) < 1e-10 ? 0 : x);
+
+/**
+ * Eliminación de Gauss-Jordan sobre la matriz aumentada [A | b].
+ * Devuelve la forma escalonada reducida, los pasos (operación en LaTeX + matriz)
+ * y las columnas pivote.
+ */
+export function gaussJordan(A, b) {
+  const n = A.length, m = A[0].length;
+  const M = A.map((r, i) => [...r, b[i]]);
+  const steps = [];
+  const pivots = [];
+  const snap = (op) => steps.push({ op, M: M.map((r) => r.map(tidy)) });
+  let row = 0;
+  for (let c = 0; c < m && row < n; c++) {
+    let p = -1;
+    for (let r = row; r < n; r++) if (Math.abs(M[r][c]) > EPS) { p = r; break; }
+    if (p < 0) continue;
+    if (p !== row) {
+      [M[p], M[row]] = [M[row], M[p]];
+      snap(`F_${row + 1} \\leftrightarrow F_${p + 1}`);
+    }
+    const pv = M[row][c];
+    if (Math.abs(pv - 1) > EPS) {
+      M[row] = M[row].map((x) => tidy(x / pv));
+      snap(`F_${row + 1} \\leftarrow \\frac{1}{${fmt(pv)}}\\,F_${row + 1}`);
+    }
+    for (let r = 0; r < n; r++) {
+      if (r === row || Math.abs(M[r][c]) < EPS) continue;
+      const f = M[r][c];
+      M[r] = M[r].map((x, k) => tidy(x - f * M[row][k]));
+      snap(`F_${r + 1} \\leftarrow F_${r + 1} ${f > 0 ? '-' : '+'} ${fmt(Math.abs(f)) === '1' ? '' : fmt(Math.abs(f))}F_${row + 1}`);
+    }
+    pivots.push(c);
+    row++;
+  }
+  return { M: M.map((r) => r.map(tidy)), steps, pivots };
+}
+
+/**
+ * Analiza A·x = b: rangos, si es compatible, una solución particular
+ * y una base de las direcciones libres (núcleo de A).
+ */
+export function solveSystem(A, b) {
+  const n = A[0].length;
+  const { M, steps, pivots } = gaussJordan(A, b);
+  const rank = pivots.length;
+  const inconsistent = M.some((r) => r.slice(0, n).every((x) => Math.abs(x) < 1e-9) && Math.abs(r[n]) > 1e-9);
+  const free = [...Array(n).keys()].filter((c) => !pivots.includes(c));
+  const xp = zero(n);
+  pivots.forEach((c, i) => { xp[c] = M[i][n]; });
+  const nullBasis = free.map((f) => {
+    const v = zero(n);
+    v[f] = 1;
+    pivots.forEach((c, i) => { v[c] = tidy(-M[i][f]); });
+    return v;
+  });
+  return { M, steps, pivots, rank, rankAug: rank + (inconsistent ? 1 : 0), consistent: !inconsistent, xp, nullBasis, free };
+}
+
+/** Matriz aumentada [A | b] en LaTeX. */
+export const taug = (M) => {
+  const n = M[0].length - 1;
+  return `\\left[\\begin{array}{${'c'.repeat(n)}|c}${M.map((r) => r.map((x) => fmt(x)).join('&')).join('\\\\')}\\end{array}\\right]`;
+};
