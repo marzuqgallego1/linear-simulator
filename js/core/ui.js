@@ -107,6 +107,14 @@ export function slider({ label, min, max, step, get, set, format = (x) => fmt(x)
 }
 
 export const button = (label, onclick, cls = '') => h('button', { class: cls, onclick }, label);
+
+/** Selector de opciones en forma de "chips": options = [[clave, etiqueta], ...] */
+export function chips(options, get, set) {
+  const btns = options.map(([key, label]) => h('button', { class: 'chip', onclick: () => set(key) }, label));
+  const refresh = () => btns.forEach((b, i) => b.classList.toggle('active', options[i][0] === get()));
+  refresh();
+  return { el: h('div', { class: 'presets' }, btns), refresh };
+}
 export const buttonRow = (...btns) => h('div', { class: 'btns' }, btns);
 
 /** Anima un valor de `from` a `to`. Devuelve una función para cancelarla. */

@@ -6,10 +6,14 @@ import cruz from './modules/cruz.js';
 import transformacion from './modules/transformacion.js';
 import determinante from './modules/determinante.js';
 import inversa from './modules/inversa.js';
+import rectas from './modules/rectas.js';
+import planos from './modules/planos.js';
+import intersecciones from './modules/intersecciones.js';
 
 // Orden del curso. Para añadir un tema: crear el módulo y agregarlo aquí.
 const SECTIONS = [
   ['Vectores', [vectores, punto, cruz]],
+  ['Geometría', [rectas, planos, intersecciones]],
   ['Matrices', [transformacion, determinante, inversa]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);

@@ -19,9 +19,12 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 1 | Vectores y combinación lineal (span, independencia) | ✓ | ✓ |
 | 2 | Producto punto (proyección, ángulo) | ✓ | ✓ |
 | 3 | Producto cruz (área, regla de la mano derecha) | – | ✓ |
-| 4 | Matriz como transformación | ✓ | ✓ |
-| 5 | Determinante (área / volumen con signo) | ✓ | ✓ |
-| 6 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
+| 4 | Rectas (vector director, ecuaciones, distancia a un punto) | ✓ | ✓ |
+| 5 | Planos (vector normal, directores, distancia a un punto) | – | ✓ |
+| 6 | Intersecciones (recta–recta, recta–plano, plano–plano) | ✓ | ✓ |
+| 7 | Matriz como transformación | ✓ | ✓ |
+| 8 | Determinante (área / volumen con signo) | ✓ | ✓ |
+| 9 | Matriz inversa (deshacer, caso singular) | ✓ | ✓ |
 
 ## Estructura
 
@@ -33,6 +36,7 @@ js/core/math.js       operaciones (det, inversa, cruz, …) y formato LaTeX
 js/core/stage.js      escena 2D/3D, flechas, rejillas, puntos arrastrables
 js/core/ui.js         controles del panel (editores de vector/matriz, sliders)
 js/core/presets.js    vectores base y matrices de ejemplo
+js/core/geom.js       rectas, planos e intersecciones (dibujo y fórmulas)
 js/modules/*.js       un archivo por tema
 ```
 

@@ -440,3 +440,49 @@ export class Box {
   }
   setColor(c) { this.fill.material.color.set(c); this.edge.material.color.set(c); return this; }
 }
+
+/** Cilindro delgado entre dos puntos (para rectas, que con líneas de 1px casi no se ven en 3D). */
+export class Rod {
+  constructor(stage, color, { radius = 0.02, opacity = 1 } = {}) {
+    this.mesh = new THREE.Mesh(SHAFT_GEO, new THREE.MeshLambertMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 }));
+    stage.content.add(this.mesh);
+    this.r = radius;
+    this.shown = true;
+  }
+  set(a, b) {
+    const A = v3(a), d = v3(b).sub(A), len = d.length();
+    this.mesh.visible = this.shown && len > 1e-6;
+    if (!this.mesh.visible) return this;
+    this.mesh.position.copy(A);
+    this.mesh.scale.set(this.r, len, this.r);
+    this.mesh.quaternion.setFromUnitVectors(UP, d.normalize());
+    return this;
+  }
+  setVisible(b) { this.shown = b; if (!b) this.mesh.visible = false; return this; }
+}
+
+/** Punto fijo (no arrastrable). */
+export class Dot {
+  constructor(stage, color, { radius = 0.1 } = {}) {
+    this.mesh = new THREE.Mesh(HANDLE_GEO, new THREE.MeshBasicMaterial({ color }));
+    this.mesh.scale.setScalar(radius / 0.11);
+    stage.content.add(this.mesh);
+  }
+  set(p) { this.mesh.position.copy(v3(p)); return this; }
+  setVisible(b) { this.mesh.visible = b; return this; }
+}
+
+/** Conjunto de segmentos sueltos: set([a1, b1, a2, b2, ...]). */
+export class Segments {
+  constructor(stage, color, { opacity = 0.3 } = {}) {
+    this.obj = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
+    this.obj.frustumCulled = false;
+    stage.content.add(this.obj);
+  }
+  set(points) {
+    this.obj.geometry.dispose();
+    this.obj.geometry = new THREE.BufferGeometry().setFromPoints(points.map(v3));
+    return this;
+  }
+  setVisible(b) { this.obj.visible = b; return this; }
+}

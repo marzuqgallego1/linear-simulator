@@ -169,6 +169,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .chip { font-size: 13px; padding: 3px 10px; border-radius: 99px; }
+.chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 ul.try { margin: 0; padding-left: 18px; }
 ul.try li { margin: 6px 0; }
