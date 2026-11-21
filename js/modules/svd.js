@@ -1,6 +1,6 @@
 import { Arrow, Lattice, Polyline, C } from '../core/stage.js';
-import { identity, lerpMat, matMul, matVec, transpose, svd, rotPow, orthoPath, det, fmt, tm, clr } from '../core/math.js';
-import { R, h, intro, card, details, tryList, matEditor, slider, button, buttonRow, TexBox, Note, rich, animate } from '../core/ui.js';
+import { identity, lerpMat, matMul, matVec, transpose, svd, rotPow, orthoPath, det, eigen, polyTex, fmt, tv, tm, clr } from '../core/math.js';
+import { R, h, intro, card, details, tryList, matEditor, slider, button, buttonRow, TexBox, Note, rich, animate, tabs, Stepper } from '../core/ui.js';
 import { basisColors } from '../core/presets.js';
 
 const SC = [C.u, C.v, '#20c997']; // direcciones singulares 1, 2, 3
@@ -23,8 +23,8 @@ const PRE = {
 };
 
 const state = {
-  2: { A: PRE[2][0][1], s: 3 },
-  3: { A: PRE[3][1][1], s: 3 },
+  2: { A: PRE[2][0][1], s: 3, tab: 'exp', step: 0 },
+  3: { A: PRE[3][1][1], s: 3, tab: 'exp', step: 0 },
 };
 
 const circle = (f, N = 72) => Array.from({ length: N + 1 }, (_, k) => f((2 * Math.PI * k) / N));
@@ -63,15 +63,74 @@ export default {
     const run = (a, b) => { stop(); st.s = a; update(); stop = animate(a, b, 1300 * (b - a), (v) => { st.s = v; update(); }); };
     const me = matEditor({ dim, colors: basisColors(n), get: () => st.A, set: (A) => { stop(); st.A = A; st.s = 3; update(); } });
     const pre = h('div', { class: 'presets' }, PRE[dim].map(([name, A]) =>
-      h('button', { class: 'chip', onclick: () => { st.A = A.map((r) => [...r]); run(0, 3); } }, name)));
+      h('button', { class: 'chip', onclick: () => { st.A = A.map((r) => [...r]); if (st.tab === 'calc') { stop(); update(); goScene(); } else run(0, 3); } }, name)));
     const ss = slider({ label: 's', min: 0, max: 3, step: 0.01, get: () => st.s, set: (v) => { stop(); st.s = v; update(); } });
     const phase = new Note();
     const cA = new TexBox(), cS = new TexBox(), nS = new Note(), cE = new TexBox();
+
+    // --- procedimiento: AᵀA → λ → V → σ → U ---
+    // escena de cada paso: momento s de la animación (0: inicio, 1: tras Vᵀ, 2: tras Σ, 3: A) o 'play'
+    let scene = [];
+    const Sm = () => I.map((r, i) => r.map((x, j) => (i === j ? D.sigma[i] : 0)));
+    const goS = (b) => { stop(); const a = st.s; if (Math.abs(b - a) < 1e-6) return update(); stop = animate(a, b, 450 * Math.abs(b - a) + 300, (v) => { st.s = v; update(); }); };
+    const goScene = () => { const sc = scene[st.step] ?? 3; if (sc === 'play') run(0, 3); else goS(sc); };
+    const stepper = new Stepper((i) => { st.step = i; goScene(); });
+    function buildProc() {
+      const A = st.A, AtA = matMul(transpose(A), A), E = eigen(AtA), steps = [];
+      scene = [];
+      const add1 = (step, sc) => { steps.push(step); scene.push(sc); };
+      add1({
+        title: 'La idea: mirar AᵀA',
+        tex: [R`(A\vec v_i)\cdot(A\vec v_j) = \vec v_i^{\mathsf T}(A^{\mathsf T}A)\,\vec v_j`, R`A^{\mathsf T}A = ${tm(AtA)}`],
+        why: R`se buscan direcciones $\vec v_i$ perpendiculares que <b>sigan perpendiculares</b> después de aplicar $A$ (en la escena, ${dim === 2 ? 'el círculo' : 'la esfera'} y sus flechas). Los productos punto después de $A$ los calcula la matriz $A^{\mathsf T}A$, que es <b>simétrica</b>. Y una matriz simétrica siempre tiene autovectores perpendiculares: esos son los $\vec v_i$.`,
+      }, 0);
+      const lams = D.sigma.map((x) => x * x);
+      add1({
+        title: 'Autovalores de AᵀA',
+        tex: [R`\det(\lambda I - A^{\mathsf T}A) =`, R`${polyTex(E.poly)} = 0`, lams.map((l, i) => clr(SC[i], R`\lambda_${i + 1} = ${fmt(l)}`)).join(R`,\ `)],
+        why: R`se calculan como en «Autovalores». Al ser $A^{\mathsf T}A$ simétrica, todas las raíces son reales, y además ninguna es negativa: $\lambda_i = \vec v_i^{\mathsf T}A^{\mathsf T}A\,\vec v_i = \|A\vec v_i\|^2 \ge 0$. Se ordenan de mayor a menor.`,
+      }, 0);
+      add1({
+        title: 'Autovectores unitarios: V',
+        tex: [...D.vs.map((v, i) => clr(SC[i], R`\vec v_${i + 1} = ${tv(v)}`)), R`V = ${tm(D.V)}`],
+        why: R`para cada $\lambda_i$ se resuelve $(A^{\mathsf T}A - \lambda_iI)\vec v = \vec 0$ y se divide entre su largo para que mida 1. Son perpendiculares entre sí, así que $V$ es ortogonal: $V^{\mathsf T}$ es un <b>giro</b> que lleva cada $\vec v_i$ a un eje (paso 1 en la escena).`,
+      }, 1);
+      add1({
+        title: 'Valores singulares: σ = √λ',
+        tex: [...D.sigma.map((x, i) => clr(SC[i], R`\sigma_${i + 1} = \sqrt{${fmt(lams[i])}} = ${fmt(x)}`)), R`\Sigma = ${tm(Sm())}`],
+        why: R`como $\lambda_i = \|A\vec v_i\|^2$, la raíz $\sigma_i = \|A\vec v_i\|$ es <b>cuánto estira $A$</b> la dirección $\vec v_i$. $\Sigma$ estira cada eje por su $\sigma_i$ (paso 2): ${dim === 2 ? 'el círculo se vuelve una elipse' : 'la esfera se vuelve un elipsoide'} alineado con los ejes, de semiejes $\sigma_i$.${D.rank < n ? R` Un $\sigma = 0$ aplasta ese eje.` : ''}`,
+      }, 2);
+      add1({
+        title: 'Las direcciones de salida: U',
+        tex: [...D.us.flatMap((u, i) => (i < D.rank
+          ? [R`\vec u_${i + 1} = \frac{A\vec v_${i + 1}}{\sigma_${i + 1}} = \frac{1}{${fmt(D.sigma[i])}}${tv(matVec(A, D.vs[i]))} = ${clr(SC[i], tv(u))}`]
+          : [R`\vec u_${i + 1} = ${clr(SC[i], tv(u))}\ (\perp)`])), R`U = ${tm(D.U)}`],
+        why: R`$A\vec v_i$ apunta a donde fue a parar la dirección $\vec v_i$ y mide $\sigma_i$; al dividir se obtiene la dirección unitaria $\vec u_i$. Como los $A\vec v_i$ son perpendiculares, $U$ también es ortogonal: otro giro (paso 3).${D.rank < n ? R` Si $\sigma_i = 0$ no se puede dividir: ese $\vec u_i$ se elige perpendicular a los demás (cualquiera sirve, porque se multiplica por 0).` : ''}`,
+      }, 3);
+      add1({
+        title: 'Comprobar: UΣVᵀ = A',
+        tex: [R`A\vec v_i = \sigma_i\vec u_i \iff AV = U\Sigma`, R`U\Sigma V^{\mathsf T} = ${tm(matMul(D.U, matMul(Sm(), transpose(D.V))))}`],
+        why: R`las ecuaciones $A\vec v_i = \sigma_i\vec u_i$, puestas en columnas, son $AV = U\Sigma$; multiplicando por $V^{\mathsf T}$ a la derecha (como $VV^{\mathsf T} = I$) sale $A = U\Sigma V^{\mathsf T}$. La escena reproduce los tres pasos: girar, estirar, girar.`,
+      }, 'play');
+      stepper.set(steps, st.step);
+      st.step = stepper.i;
+    }
+    const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => st.tab, (k) => {
+      stop(); st.tab = k; tb.refresh(); update();
+      if (k === 'calc') goScene();
+    });
 
     panel.append(
       ...intro('Descomposición en valores singulares (SVD)',
         R`<b>Toda</b> matriz, sea cual sea, hace lo mismo en tres pasos: <b>girar, estirar por los ejes, girar</b>. Eso es $A = U\Sigma V^{\mathsf T}$. Por eso ${dim === 2 ? 'un círculo siempre se convierte en una elipse' : 'una esfera siempre se convierte en un elipsoide'}: los <b>valores singulares</b> $\sigma_i$ son las longitudes de sus semiejes.`),
       card('Matriz A', me.el, pre),
+      tb.el, tb.panes.exp, tb.panes.calc,
+    );
+    tb.panes.calc.append(
+      rich(R`Método: todo sale de la matriz simétrica $A^{\mathsf T}A$. Sus autovectores dan $V$, sus autovalores dan los $\sigma$, y con ellos se calcula $U$.`, 'p', 'note'),
+      stepper.el, stepper.listEl,
+    );
+    tb.panes.exp.append(
       card('Los tres pasos', ss.el,
         buttonRow(button('1 · Vᵀ', () => run(0, 1)), button('2 · Σ', () => run(1, 2)), button('3 · U', () => run(2, 3)), button('▶ Todo', () => run(0, 3), 'primary')),
         phase.el),
@@ -92,6 +151,7 @@ export default {
 
     function update() {
       D = svd(st.A);
+      buildProc();
       const Mt = M(), s = st.s;
       grid.setMatrix(Mt);
       lines.forEach((l, i) => l.set(curves[i].map((p) => matVec(Mt, p))));
