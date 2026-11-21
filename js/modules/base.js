@@ -1,6 +1,6 @@
 import { Arrow, Lattice, C, setLabel } from '../core/stage.js';
-import { identity, lerpMat, matVec, matMul, inverse, det, add, scale, fmt, tv, tm, clr, combo, deg, EPS, to3 } from '../core/math.js';
-import { R, h, intro, card, details, tryList, vecEditor, slider, button, buttonRow, TexBox, Note, rich, animate } from '../core/ui.js';
+import { identity, lerpMat, matVec, matMul, inverse, det, add, scale, dot, fmt, tv, tm, clr, combo, deg, EPS, to3, gaussJordan, taug } from '../core/math.js';
+import { R, h, intro, card, details, tryList, vecEditor, slider, button, buttonRow, TexBox, Note, rich, animate, tabs, Stepper } from '../core/ui.js';
 import { BASIS } from '../core/presets.js';
 
 const BC = [C.u, C.v, '#20c997']; // colores de b1, b2, b3
@@ -28,8 +28,8 @@ const PRESETS = {
 };
 
 const state = {
-  2: { B: [[2, 1], [-1, 1]], x: [3, 3], t: 0, theta: 0 },
-  3: { B: [[1, 0.5, 0], [0, 1, 0.5], [0.5, 0, 1]], x: [2, 2, 1], t: 0, theta: 0 },
+  2: { B: [[2, 1], [-1, 1]], x: [3, 3], t: 0, theta: 0, tab: 'exp', step: 0 },
+  3: { B: [[1, 0.5, 0], [0, 1, 0.5], [0.5, 0, 1]], x: [2, 2, 1], t: 0, theta: 0, tab: 'exp', step: 0 },
 };
 
 export default {
@@ -62,7 +62,7 @@ export default {
     const xA = new Arrow(stage, C.x, { label: R`\vec x`, radius: 0.045 });
     const badge = stage.addLabel('', C.x, 'badge');
 
-    const editable = () => s.t < 0.005;
+    const editable = () => s.t < 0.005 && s.tab === 'exp';
     s.B.forEach((_, j) => stage.addHandle({
       color: BC[j], visible: editable, get: () => s.B[j],
       set: (v) => { s.B = s.B.map((b, k) => (k === j ? v : b)); update(); },
@@ -88,13 +88,97 @@ export default {
     const note = new Note(), viewNote = new Note();
     const nb = dim === 2 ? R`$\vec b_1$ y $\vec b_2$` : R`$\vec b_1$, $\vec b_2$ y $\vec b_3$`;
 
+    // --- procedimiento: resolver P c = x con Gauss-Jordan sobre [P | x] ---
+    // Cada paso guarda la matriz «de vista» E (producto de las operaciones de fila hechas):
+    // en la escena, E se aplica a todo el plano y mueve b_i y x a la vez.
+    let views = [I], compStep = -1, anim = { from: I, to: I, a: 1 }, stopAnim = () => {};
+    const stepper = new Stepper((i, from) => {
+      s.step = i;
+      const A0 = lerpMat(anim.from, anim.to, anim.a);
+      stopAnim();
+      anim = { from: A0, to: views[i] ?? I, a: from === undefined ? 1 : 0 };
+      if (anim.a < 1) stopAnim = animate(0, 1, 700, (a) => { anim.a = a; update(); });
+      update();
+    });
+    const cs = dim === 2 ? R`c_1\vec b_1 + c_2\vec b_2` : R`c_1\vec b_1 + c_2\vec b_2 + c_3\vec b_3`;
+    function buildProc() {
+      const Pm = P(), Pi = Pinv(), ok = !!Pi;
+      const { M, steps: gs } = gaussJordan(Pm, s.x);
+      const viewOf = (Mk) => (ok ? matMul(Mk.map((r) => r.slice(0, n)), Pi) : I);
+      const steps = [{
+        title: 'Plantear el sistema',
+        tex: [R`${cs} = \vec x`, R`${tm(Pm)}${tv(['c_1', 'c_2', 'c_3'].slice(0, n))} = ${tv(s.x)}`, R`\Rightarrow\ ${taug(Pm.map((r, i) => [...r, s.x[i]]))}`],
+        why: R`buscar las coordenadas en $B$ es buscar cuántas veces sumar cada $\vec b_i$ para llegar a $\vec x$. Eso es un sistema lineal: las columnas de $P$ son ${nb}, y el lado derecho es $\vec x$. Se escribe como matriz aumentada $[P\,|\,\vec x]$.`,
+      }];
+      views = [I]; compStep = -1;
+      for (const g of gs) {
+        const kind = g.op.includes('leftrightarrow') ? 'swap' : g.op.includes('frac{1}') ? 'scale' : 'elim';
+        steps.push({
+          title: `$${g.op}$`,
+          tex: taug(g.M),
+          why: (kind === 'swap'
+            ? R`intercambiar dos filas es una <b>reflexión</b> que intercambia dos ejes.`
+            : kind === 'scale'
+              ? R`dividir una fila es <b>estirar o encoger</b> el espacio en la dirección de ese eje, para que el pivote valga 1.`
+              : R`restar un múltiplo de una fila a otra es una <b>cizalla</b>: deja un eje fijo y empuja el otro para hacer un 0 en la columna.`)
+            + R` Toda operación de fila es una transformación lineal $E$ que se aplica a todo el espacio a la vez: mueve ${nb} y $\vec x$ (en la escena). Como $E(${cs}) = ${dim === 2 ? R`c_1E\vec b_1 + c_2E\vec b_2` : R`c_1E\vec b_1 + \dots`}$, <b>los mismos $c_i$ siguen sirviendo</b>: la respuesta no cambia.`,
+        });
+        views.push(viewOf(g.M));
+      }
+      if (ok) {
+        const xB = M.map((r) => r[n]);
+        steps.push({
+          title: 'La izquierda es I: leer las coordenadas',
+          tex: [taug(M), R`[\vec x]_B = ${clr(C.x, tv(xB))}`],
+          why: R`al final ${nb} han llegado a $\hat\imath, \hat\jmath${dim === 3 ? R`, \hat k` : ''}$: la rejilla naranja ya es la cuadrada. Con la base estándar las coordenadas se leen directamente, así que la última columna son las $c_i$. Todas las operaciones juntas forman $P^{-1}$: por eso $[\vec x]_B = P^{-1}\vec x$.`,
+        });
+        views.push(viewOf(M));
+        compStep = steps.length;
+        steps.push({
+          title: 'Comprobar',
+          tex: [R`${combo(xB.map((c, j) => [c, clr(BC[j], tv(s.B[j]))]))}`, R`= ${clr(C.x, tv(s.x))}`],
+          why: R`con los $c_i$ hallados, la combinación de los vectores <b>originales</b> debe dar $\vec x$. En la escena se vuelve a la vista estándar y se ven las piezas $c_i\vec b_i$ (flechas tenues) encadenadas hasta la punta de $\vec x$.`,
+        });
+        views.push(I);
+        const PtP = matMul(Pm.map((_, i) => Pm.map((r) => r[i])), Pm);
+        if (PtP.every((r, i) => r.every((v, j) => Math.abs(v - (i === j ? 1 : 0)) < 1e-6))) {
+          steps.push({
+            title: 'Atajo: base ortonormal',
+            tex: s.B.map((b, j) => R`c_${j + 1} = ${clr(BC[j], R`\vec b_${j + 1}`)}\cdot\vec x = ${fmt(dot(b, s.x))}`),
+            why: R`si los $\vec b_i$ son unitarios y perpendiculares, no hace falta escalonar: al hacer el producto punto de $\vec x = ${cs}$ con $\vec b_i$, todos los términos se anulan menos el suyo. Cada coordenada es la <b>proyección</b> de $\vec x$ sobre su eje.`,
+          });
+          views.push(I);
+        }
+      } else {
+        steps.push({
+          title: 'Aparece una fila de ceros a la izquierda',
+          tex: taug(M),
+          why: R`${nb} son linealmente dependientes: las operaciones aplastan el espacio y una fila de $P$ se vuelve 0. Esa fila dice $0 = $ (el número de la derecha): si no es 0 no hay solución, y si lo es hay infinitas. En ningún caso las coordenadas son únicas, así que no es una base.`,
+        });
+        views.push(I);
+      }
+      stepper.set(steps, s.step);
+      s.step = stepper.i;
+      if (s.tab === 'calc' && anim.a >= 1) anim = { from: views[s.step], to: views[s.step], a: 1 };
+    }
+    const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => s.tab, (k) => {
+      stop(); stopAnim(); s.tab = k; s.t = 0; anim = { from: I, to: I, a: 1 }; tb.refresh(); update();
+    });
+
     panel.append(
       ...intro('Cambio de base',
         R`Las coordenadas de un vector dependen de los ejes con que lo midas. Una <b>base</b> son tus «reglas de medir»: las coordenadas de $\vec x$ en la base $B$ son los números $c_i$ tales que $\vec x = ${dim === 2 ? R`c_1\vec b_1 + c_2\vec b_2` : R`c_1\vec b_1 + c_2\vec b_2 + c_3\vec b_3`}$. El vector es el mismo; lo que cambia es cómo lo describes.`),
       card('Base B', h('div', { class: 'row' }, eb.map((e) => e.el)), presets),
+      card('Vector x', ex.el, cCoords.el, note.el),
+      tb.el, tb.panes.exp, tb.panes.calc,
+    );
+    tb.panes.calc.append(
+      rich(R`Método: resolver $P\vec c = \vec x$ escalonando $[P\,|\,\vec x]$. En la escena, cada operación de fila transforma todo el espacio: ${nb} se van enderezando hasta ser los ejes estándar, y $\vec x$ acaba en sus coordenadas.`, 'p', 'note'),
+      stepper.el, stepper.listEl,
+    );
+    tb.panes.exp.append(
       card('Rotar el sistema de referencia',
         rich(dim === 2 ? 'Gira los ejes un ángulo $\\theta$ (base ortonormal):' : 'Gira los ejes alrededor del eje $z$ un ángulo $\\theta$:'), sTheta.el),
-      card('Vector x', ex.el, cCoords.el, note.el),
       card('Cambiar el punto de vista', st.el, buttonRow(btnB, button('Ver desde la base estándar', () => go(0))), viewNote.el),
       card('Lo que está pasando',
         rich(R`La <b>matriz de cambio de base</b> $P$ tiene a ${nb} como columnas. Traduce coordenadas de $B$ a coordenadas estándar: $\vec x = P\,[\vec x]_B$. Para ir al revés se usa su inversa:`),
@@ -115,7 +199,9 @@ export default {
     function update() {
       const Pm = P(), Pi = Pinv(), ok = !!Pi;
       if (!ok && s.t > 0) { stop(); s.t = 0; }
-      const Mt = M();
+      buildProc();
+      const calc = s.tab === 'calc';
+      const Mt = calc ? lerpMat(anim.from, anim.to, anim.a) : M();
       const xB = ok ? matVec(Pi, s.x) : null;
 
       stdGrid.setMatrix(Mt);
@@ -124,12 +210,13 @@ export default {
       bArrows.forEach((a, j) => a.set(O, matVec(Mt, s.B[j])));
       xA.set(O, matVec(Mt, s.x));
       let cur = O;
+      const showParts = ok && (!calc || (compStep >= 0 && s.step >= compStep));
       parts.forEach((a, j) => {
         const next = ok ? add(cur, scale(s.B[j], xB[j])) : cur;
-        a.setVisible(ok).set(matVec(Mt, cur), matVec(Mt, next));
+        a.setVisible(showParts).set(matVec(Mt, cur), matVec(Mt, next));
         cur = next;
       });
-      badge.visible = ok;
+      badge.visible = ok && (!calc || showParts);
       if (ok) {
         badge.position.set(...to3(matVec(Mt, s.x)));
         setLabel(badge, R`[\vec x]_B = (${xB.map((c) => fmt(c)).join(',\ ')})`);
@@ -169,6 +256,6 @@ export default {
     }
 
     update();
-    return { destroy: () => stop() };
+    return { destroy: () => { stop(); stopAnim(); } };
   },
 };
