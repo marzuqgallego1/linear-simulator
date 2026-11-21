@@ -1,6 +1,6 @@
 import { Arrow, Lattice, C } from '../core/stage.js';
-import { identity, lerpMat, col, matMul, transpose, qrDecomp, orthoPath, det, fmt, tv, tm, clr } from '../core/math.js';
-import { R, h, intro, card, details, tryList, matEditor, slider, button, buttonRow, TexBox, Note, rich, animate } from '../core/ui.js';
+import { identity, lerpMat, col, matMul, transpose, qrDecomp, orthoPath, det, add, sub, scale, dot, norm, fmt, pf, tv, tm, clr } from '../core/math.js';
+import { R, h, intro, card, details, tryList, matEditor, slider, button, buttonRow, TexBox, Note, rich, animate, tabs, Stepper } from '../core/ui.js';
 import { BASIS, basisColors } from '../core/presets.js';
 
 const AC = [C.u, C.v, '#20c997']; // columnas de A (como en Gram-Schmidt)
@@ -20,8 +20,8 @@ const PRE = {
 };
 
 const state = {
-  2: { A: PRE[2][0][1], s: 2 },
-  3: { A: PRE[3][0][1], s: 2 },
+  2: { A: PRE[2][0][1], s: 2, tab: 'exp', step: 0 },
+  3: { A: PRE[3][0][1], s: 2, tab: 'exp', step: 0 },
 };
 
 export default {
@@ -46,24 +46,108 @@ export default {
     const target = AC.slice(0, n).map((c, j) => new Arrow(stage, c, { opacity: 0.3, radius: 0.025, label: R`\vec a_${j + 1}` }));
     const axes = BASIS.slice(0, n).map((b) => new Arrow(stage, b.color, { opacity: 0.85, radius: 0.025, label: b.tex }));
     const cols = AC.slice(0, n).map((c, j) => new Arrow(stage, c, { radius: 0.05, label: R`\vec r_${j + 1}` }));
+    // procedimiento: sombras de a_j sobre los q ya hechos, el resto w_j y los q terminados
+    const shadows = [0, 1].map(() => new Arrow(stage, C.neutral, { radius: 0.03, opacity: 0.8 }));
+    const wArr = new Arrow(stage, C.x, { radius: 0.045 });
+    const qArr = AC.slice(0, n).map((c, j) => new Arrow(stage, c, { radius: 0.06, label: R`\vec q_${j + 1}` }));
     AC.slice(0, n).forEach((c, j) => stage.addHandle({
       color: c, get: () => col(st.A, j),
-      set: (p) => { stop(); st.A = st.A.map((r, i) => r.map((x, k) => (k === j ? p[i] : x))); st.s = 2; update(); },
+      set: (p) => { stop(); st.A = st.A.map((r, i) => r.map((x, k) => (k === j ? p[i] : x))); st.s = st.tab === 'calc' ? 0 : 2; update(); },
     }));
 
     // --- panel ---
     const run = (a, b) => { stop(); st.s = a; update(); stop = animate(a, b, 1300 * (b - a), (v) => { st.s = v; update(); }); };
-    const me = matEditor({ dim, colors: AC.slice(0, n), get: () => st.A, set: (A) => { stop(); st.A = A; st.s = 2; update(); } });
+    const me = matEditor({ dim, colors: AC.slice(0, n), get: () => st.A, set: (A) => { stop(); st.A = A; st.s = st.tab === 'calc' ? 0 : 2; update(); } });
     const pre = h('div', { class: 'presets' }, PRE[dim].map(([name, A]) =>
-      h('button', { class: 'chip', onclick: () => { st.A = A.map((r) => [...r]); run(0, 2); } }, name)));
+      h('button', { class: 'chip', onclick: () => { st.A = A.map((r) => [...r]); if (st.tab === 'calc') { stop(); st.s = 0; update(); } else run(0, 2); } }, name)));
     const ss = slider({ label: 's', min: 0, max: 2, step: 0.01, get: () => st.s, set: (v) => { stop(); st.s = v; update(); } });
     const phase = new Note();
     const cQR = new TexBox(), cR = new TexBox(), cChk = new TexBox(), nQR = new Note(), cUse = new TexBox();
+
+    // --- procedimiento: Gram-Schmidt con números ---
+    // escena de cada paso: { j, phase: 'proj'|'norm'|'fail'|'end', done: cuántos q se muestran }
+    let scene = [];
+    const stepper = new Stepper((i) => {
+      st.step = i; stop();
+      if (scene[i]?.phase === 'end') run(0, 2); else { st.s = 0; update(); }
+    });
+    function buildProc() {
+      const A = st.A, a = transpose(A), qs = [], steps = [];
+      scene = [];
+      const R0 = A.map(() => Array(n).fill(0));
+      for (let j = 0; j < n; j++) {
+        const aj = a[j], J = j + 1;
+        let w = aj;
+        if (j > 0) {
+          const rs = qs.map((q) => dot(q, aj));
+          rs.forEach((r, i) => { R0[i][j] = r; });
+          const sh = rs.reduce((acc, r, i) => add(acc, scale(qs[i], r)), Array(n).fill(0));
+          w = sub(aj, sh);
+          steps.push({
+            title: `Columna ${J}: quitar las sombras`,
+            tex: [
+              ...rs.map((r, i) => R`r_{${i + 1}${J}} = \vec q_${i + 1}\cdot\vec a_${J} = ${fmt(r)}`),
+              R`\vec w_${J} = \vec a_${J} - ${rs.map((_, i) => R`r_{${i + 1}${J}}\vec q_${i + 1}`).join(' - ')}`,
+              R`= ${tv(aj)} - ${tv(sh)}`, R`= ${clr(C.x, tv(w))}`,
+            ],
+            why: R`cada $r_{i${J}}$ es la <b>sombra</b> (proyección) de $\vec a_${J}$ sobre un $\vec q_i$ ya terminado: como $\vec q_i$ mide 1, basta un producto punto. Al restar las sombras (flechas grises) queda $\vec w_${J}$, la parte de $\vec a_${J}$ que es <b>perpendicular</b> a ${j === 1 ? R`$\vec q_1$` : R`$\vec q_1$ y $\vec q_2$`}: lo «nuevo» que aporta esta columna.`,
+          });
+          scene.push({ j, phase: 'proj', done: j, sh: rs.map((r, i) => scale(qs[i], r)), w });
+        }
+        const l = norm(w);
+        if (l < 1e-9) {
+          steps.push({
+            title: `Columna ${J}: no queda nada`,
+            tex: R`\vec w_${J} = \vec 0`,
+            why: R`$\vec a_${J}$ era pura sombra: está en el ${j === 1 ? 'recta' : 'plano'} de las columnas anteriores (es combinación de ellas). No hay dirección nueva que normalizar, así que Gram-Schmidt se detiene y no existe una $Q$ cuadrada.`,
+          });
+          scene.push({ j, phase: 'fail', done: j });
+          break;
+        }
+        R0[j][j] = l;
+        const q = scale(w, 1 / l);
+        qs.push(q);
+        steps.push({
+          title: `Columna ${J}: normalizar`,
+          tex: [
+            R`r_{${J}${J}} = \|${j ? R`\vec w_${J}` : R`\vec a_1`}\|`, R`= \sqrt{${(j ? w : aj).map((x) => `${pf(x)}^2`).join('+')}} = ${fmt(l)}`,
+            R`\vec q_${J} = \frac{${j ? R`\vec w_${J}` : R`\vec a_1`}}{${fmt(l)}} = ${clr(AC[j], tv(q))}`,
+          ],
+          why: j === 0
+            ? R`la primera columna no tiene nada que quitar: solo se divide entre su largo para que mida 1. Así $\vec a_1 = r_{11}\vec q_1$, y la primera columna de $R$ es $(r_{11}, 0${n === 3 ? ', 0' : ''})$.`
+            : R`se divide $\vec w_${J}$ entre su largo para que mida 1. Juntando: $\vec a_${J} = ${qs.map((_, i) => R`r_{${i + 1}${J}}\vec q_${i + 1}`).join(' + ')}$. Esa es la columna ${J} de $R$: solo usa $\vec q_1, \dots, \vec q_${J}$, y por eso abajo hay ceros.`,
+        });
+        scene.push({ j, phase: 'norm', done: j + 1, w });
+      }
+      if (qs.length === n) {
+        const Q = transpose(qs);
+        steps.push({
+          title: 'Armar Q y R, y comprobar',
+          tex: [R`Q = ${tm(Q)}`, R`R = ${tm(R0)}`, R`QR = ${tm(matMul(Q, R0))} = A`],
+          why: R`$Q$ lleva los $\vec q_j$ como columnas y $R$ los números que se fueron calculando: sombras arriba de la diagonal, largos en la diagonal, ceros abajo. En la escena se aplica $R$ (la primera columna no se sale del eje $x$) y luego $Q$ gira todo hasta $A$.`,
+        });
+        scene.push({ phase: 'end', done: 0 });
+      }
+      stepper.set(steps, st.step);
+      st.step = stepper.i;
+    }
+    const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => st.tab, (k) => {
+      stop(); st.tab = k; tb.refresh();
+      if (k === 'calc' && scene[st.step]?.phase !== 'end') st.s = 0; else st.s = 2;
+      update();
+    });
 
     panel.append(
       ...intro('Factorización QR',
         R`Es <b>Gram-Schmidt escrito como matrices</b>. Las columnas de $A$ se reemplazan por una base ortonormal (las columnas de $Q$), y lo que se fue restando y dividiendo queda guardado en $R$, que es <b>triangular superior</b>. Geométricamente, $A = QR$ es: primero $R$ (estirar y cizallar sin salirse de los ejes «en orden»), luego $Q$ (solo girar o reflejar).`),
       card('Matriz A (sus columnas son los vectores)', me.el, pre),
+      tb.el, tb.panes.exp, tb.panes.calc,
+    );
+    tb.panes.calc.append(
+      rich(R`Método: Gram-Schmidt columna por columna. A cada $\vec a_j$ se le quitan sus sombras sobre los $\vec q$ anteriores y lo que queda se normaliza. Los números que salen forman $R$.`, 'p', 'note'),
+      stepper.el, stepper.listEl,
+    );
+    tb.panes.exp.append(
       card('Paso a paso', ss.el,
         buttonRow(button('1 · Aplicar R', () => run(0, 1)), button('2 · Aplicar Q', () => run(1, 2)), button('▶ Todo', () => run(0, 2), 'primary')),
         phase.el),
@@ -85,12 +169,25 @@ export default {
 
     function update() {
       F = qrDecomp(st.A);
-      const Mt = M(), Fr = frame();
+      buildProc();
+      const calc = st.tab === 'calc', sc = calc ? scene[st.step] ?? { phase: 'end' } : null;
+      const pv = calc && sc.phase !== 'end';
+      const Mt = pv ? I : M(), Fr = frame();
       grid.setMatrix(Mt);
+      // escena del procedimiento
+      shadows.forEach((a, i) => {
+        const vis = pv && sc.phase === 'proj' && i < sc.sh.length;
+        a.setVisible(vis);
+        if (vis) { const from = sc.sh.slice(0, i).reduce((acc, v) => add(acc, v), O); a.set(from, add(from, sc.sh[i])); }
+      });
+      wArr.setVisible(pv && (sc.phase === 'proj' || sc.phase === 'norm'));
+      if (pv && sc.phase === 'proj') wArr.set(sc.sh.reduce((acc, v) => add(acc, v), O), col(st.A, sc.j)).setLabel(R`\vec w_${sc.j + 1}`);
+      else if (pv && sc.phase === 'norm') wArr.set(O, sc.w).setLabel(sc.j ? R`\vec w_${sc.j + 1}` : '');
+      qArr.forEach((a, j) => { const vis = pv && j < sc.done; a.setVisible(vis); if (vis) a.set(O, scale(F.qs[j], 1)); });
       target.forEach((a, j) => a.set(O, col(st.A, j)));
-      axes.forEach((a, j) => a.setVisible(F.failAt < 0).set(O, col(Fr, j))
+      axes.forEach((a, j) => a.setVisible(F.failAt < 0 && !pv).set(O, col(Fr, j))
         .setLabel(st.s > 1.01 && F.failAt < 0 ? R`\vec q_${j + 1}` : BASIS[j].tex));
-      cols.forEach((a, j) => a.set(O, col(Mt, j)).setLabel(st.s > 0.02 && st.s <= 1.01 ? R`\vec r_${j + 1}` : ''));
+      cols.forEach((a, j) => a.setVisible(!pv).set(O, col(Mt, j)).setLabel(st.s > 0.02 && st.s <= 1.01 ? R`\vec r_${j + 1}` : ''));
       [me, ss].forEach((c) => c.refresh());
 
       if (F.failAt >= 0) {
