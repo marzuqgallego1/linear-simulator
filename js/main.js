@@ -31,7 +31,7 @@ import cuadraticas from './modules/cuadraticas.js';
 const SECTIONS = [
   ['Vectores', [opvectores, vectores, punto, cruz]],
   ['Geometría y sistemas', [rectas, planos, intersecciones, sistemas]],
-  ['Matrices', [funciones, transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, lu, base, autovalores, diagonalizacion]],
+  ['Matrices', [transformacion, sumamat, producto, transpuesta, determinante, inversa, nucleo, lu, base, autovalores, diagonalizacion, funciones]],
   ['Ortogonalidad', [proyecciones, gramschmidt, qr, minimos, svd, cuadraticas]],
 ];
 const MODULES = SECTIONS.flatMap(([, mods]) => mods);

@@ -1,6 +1,6 @@
 import { Arrow, Polyline, Segments, Dot, C } from '../core/stage.js';
-import { add, sub, scale, norm, fmt, tv, clr, clamp } from '../core/math.js';
-import { R, h, tex, intro, card, details, tryList, vecEditor, slider, button, buttonRow, chips, TexBox, Note, rich, animate } from '../core/ui.js';
+import { add, sub, scale, norm, dot, matVec, matMul, transpose, inverse, det, fmt, tv, tm, clr, clamp } from '../core/math.js';
+import { R, h, tex, intro, card, details, tryList, vecEditor, slider, button, buttonRow, chips, tabs, TexBox, Note, rich, animate } from '../core/ui.js';
 import { BASIS } from '../core/presets.js';
 import { parse, evalExpr, texExpr, ExprError } from '../core/expr.js';
 
@@ -46,13 +46,48 @@ const PRE = {
   ],
 };
 
+/** Ejemplos para la segunda función S (pestaña «Operar»), por firma «entrada salida». */
+const SPRE = {
+  22: [['Rotación 90°', ['-y', 'x']], ['Cizalla', ['x + y', 'y']], ['Escala', ['2x', 'y']], ['Reflexión', ['y', 'x']], ['Traslación', ['x + 1', 'y']]],
+  33: [['Rotación (eje z)', ['-y', 'x', 'z']], ['Cizalla', ['x + z', 'y', 'z']], ['Escala', ['2x', 'y', 'z']], ['Aplastar', ['x', 'y', '0']]],
+  23: [['Plano inclinado', ['x', 'y', 'x + y']], ['Doblar', ['x + y', 'y', 'x - y']], ['Levantar (afín)', ['x', 'y', '1']]],
+  32: [['Proyectar', ['x', 'y']], ['Sumar coordenadas', ['x + z', 'y + z']]],
+};
+const OPS = [['comp', 'Composición'], ['suma', 'Suma T + S'], ['esc', 'Escalar k·T'], ['inv', 'Inversa T⁻¹'], ['tr', 'Transpuesta Tᵀ']];
+
 const shared = {
   kind: '22',
   exprs: Object.fromEntries(Object.entries(PRE).map(([k, l]) => [k, [...l[0][1]]])),
   x: { 2: [1.5, 1], 3: [1, 1, 1] },
   s: 1,
   anim: 'coord',
+  tab: 'una',
+  op: 'comp', order: 'TS', k: 2, so: 1,
+  sEx: Object.fromEntries(Object.entries(SPRE).map(([k, l]) => [k, [...l[0][1]]])),
 };
+
+/** Sustituye variables por subárboles (para escribir T(S(x)) como fórmula). */
+const subst = (nd, mp) => {
+  if (nd.t === 'var') { const r = mp[nd.v]; return r.t === 'var' || r.t === 'fn' || (r.t === 'num' && r.v >= 0) ? r : { t: 'par', a: r }; }
+  if (nd.t === 'num') return nd;
+  const o = { ...nd };
+  if (nd.a) o.a = subst(nd.a, mp);
+  if (nd.b) o.b = subst(nd.b, mp);
+  return o;
+};
+/** Coordenadas de A·x + b como fórmulas simplificadas en LaTeX. */
+const affTex = (A, b, vars) => A.map((row, i) => {
+  let s = '';
+  row.forEach((a, j) => {
+    const f = fmt(a);
+    if (f === '0') return;
+    const neg = f.startsWith('-'), mag = neg ? f.slice(1) : f;
+    s += (s ? (neg ? ' - ' : ' + ') : neg ? '-' : '') + (mag === '1' ? '' : mag) + vars[j];
+  });
+  const fb = fmt(b ? b[i] : 0);
+  if (fb !== '0') s += s ? (fb.startsWith('-') ? ` - ${fb.slice(1)}` : ` + ${fb}`) : fb;
+  return s || '0';
+});
 
 const VAR = ['x', 'y', 'z'], OUT = ["x'", "y'", "z'"];
 const OK = R`\textcolor{#51cf66}{\checkmark}`, BAD = R`\textcolor{#ff6b6b}{\times}`;
@@ -86,19 +121,21 @@ export default {
     const T = (p) => { const e = env(p); return trees.map((t) => evalExpr(t, e)); };
 
     /** ¿lineal, afín o no lineal? Se prueba con varios vectores (no solo con los que se muestran). */
-    const classify = () => {
-      const T0 = T(O);
-      const G = (p) => sub(T(p), T0);
-      const samples = [[0.7, -1.3, 0.4], [-2.1, 0.6, 1.7], [1.9, 2.3, -0.8], [-0.4, -1.1, -2.6], [3.1, -0.2, 0.9]].map((v) => v.slice(0, n));
+    const classifyF = (F, din, dout) => {
+      const Oi = Array(din).fill(0), Ei = Oi.map((_, j) => Oi.map((__, i) => (i === j ? 1 : 0)));
+      const T0 = F(Oi);
+      const G = (p) => sub(F(p), T0);
+      const samples = [[0.7, -1.3, 0.4], [-2.1, 0.6, 1.7], [1.9, 2.3, -0.8], [-0.4, -1.1, -2.6], [3.1, -0.2, 0.9]].map((v) => v.slice(0, din));
       let affine = finite(T0);
       for (let i = 0; i < samples.length && affine; i++) {
         const u = samples[i], v = samples[(i + 2) % samples.length], c = [2.5, -1.5, 0.3, 4, -3][i];
         if (!near(G(add(u, v)), add(G(u), G(v))) || !near(G(scale(u, c)), scale(G(u), c))) affine = false;
       }
-      const lin = affine && near(T0, Array(m).fill(0));
-      const A = affine ? Array.from({ length: m }, (_, i) => E.map((e) => G(e)[i])) : null;
+      const lin = affine && near(T0, Array(dout).fill(0));
+      const A = affine ? Array.from({ length: dout }, (_, i) => Ei.map((e) => G(e)[i])) : null;
       return { type: lin ? 'lineal' : affine ? 'afin' : 'no', T0, A };
     };
+    const classify = () => classifyF(T, n, m);
 
     // --- posiciones durante la animación ---
     const steps = () => (shared.anim === 'coord' ? D : shared.anim === 'afin' ? 2 : 1);
@@ -129,7 +166,11 @@ export default {
     const ghost = new Segments(stage, C.grid, { opacity: D === 2 ? 0.18 : 0.1 });
     const grid = new Segments(stage, C.grid, { opacity: D === 2 ? 0.75 : 0.45 });
     const boxSeg = new Segments(stage, '#20c997', { opacity: 0.95 });
-    const eArr = E.map((_, j) => new Arrow(stage, BASIS[j].color, { radius: 0.045, label: ' ' }));
+    const eArr = [0, 1, 2].map((j) => new Arrow(stage, BASIS[j].color, { radius: 0.045, label: ' ' }));
+    // «Operar», suma: T(x) y S(x) por separado
+    const tArr = new Arrow(stage, C.u, { radius: 0.035, opacity: 0.8, label: R`T(\vec x)` });
+    const sArr = new Arrow(stage, C.v, { radius: 0.035, opacity: 0.8, label: R`S(\vec x)` });
+    const sArr2 = new Arrow(stage, C.v, { radius: 0.025, opacity: 0.35 });
     const oDot = new Dot(stage, C.x2, { radius: 0.11 });
     const xg = new Arrow(stage, C.x, { opacity: 0.4, radius: 0.025, label: R`\vec x` });
     const xa = new Arrow(stage, C.w, { radius: 0.045, label: ' ' });
@@ -145,8 +186,33 @@ export default {
       }
       return out;
     };
-    ghost.set(toSegs(lines, null));
-    stage.addHandle({ color: C.x, get: () => pad(shared.x[n], D), set: (p) => { stop(); shared.x[n] = p.slice(0, n); update(); } });
+    let ghostKey = '';
+    const setGhost = (key, segs) => { if (ghostKey !== key) { ghostKey = key; ghost.set(segs()); } };
+    // dimensión del vector x que se arrastra: la entrada de lo que se está mirando
+    const xDim = () => (shared.tab === 'op' && shared.op === 'tr' && info.type === 'lineal' ? m : n);
+    stage.addHandle({ color: C.x, get: () => pad(shared.x[xDim()], D), set: (p) => { stop(); stopOp(); const d = xDim(); shared.x[d] = p.slice(0, d); update(); } });
+
+    // rejillas para cualquier espacio de partida (ℝ² o ℝ³)
+    const geoCache = {};
+    const geoFor = (d) => geoCache[d] ??= (() => {
+      const Ld = d === 2 ? (D === 2 ? 5 : 3) : 2, Sd = d === 2 ? (D === 2 ? 50 : 30) : 16, ls = [];
+      const sl = (fix, dir) => Array.from({ length: Sd + 1 }, (_, k) => { const p = [...fix]; p[dir] = -Ld + (2 * Ld * k) / Sd; return p; });
+      if (d === 2) for (let a = -Ld; a <= Ld; a++) ls.push(sl([a, 0], 1), sl([0, a], 0));
+      else for (let a = -Ld; a <= Ld; a++) for (let b = -Ld; b <= Ld; b++) ls.push(sl([0, a, b], 0), sl([a, 0, b], 1), sl([a, b, 0], 2));
+      const bx = d === 2
+        ? [[[0, 0], [1, 0]], [[1, 0], [1, 1]], [[1, 1], [0, 1]], [[0, 1], [0, 0]]]
+        : [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 0], [1, 0, 1], [0, 1, 1], [1, 1, 1]].flatMap((a, i, all) => all.slice(i + 1).filter((b) => norm(sub(a, b)) === 1).map((b) => [a, b]));
+      const O0 = Array(d).fill(0);
+      return { lines: ls, box: bx.map(([a, b]) => Array.from({ length: 13 }, (_, k) => add(a, scale(sub(b, a), k / 12)))), O: O0, E: O0.map((_, j) => O0.map((__, i) => (i === j ? 1 : 0))) };
+    })();
+    const segsWith = (pls, fn) => {
+      const out = [];
+      for (const pl of pls) {
+        let prev = null;
+        for (const p of pl) { const q = fn(p); if (prev && q) out.push(prev, q); prev = q; }
+      }
+      return out;
+    };
 
     // --- panel ---
     const kindChips = chips(Object.entries(KINDS).map(([k, v]) => [k, v.label]), () => shared.kind, switchTo);
@@ -159,7 +225,8 @@ export default {
     const pre = h('div', { class: 'presets' }, PRE[kind].map(([name, ex]) => h('button', {
       class: 'chip', onclick: () => {
         ex.forEach((t, i) => { exprs[i] = t; fields[i].inp.value = t; compile(i); });
-        refreshAll(); run(0, 1);
+        refreshAll();
+        if (shared.tab === 'op') runOp(0, 1); else run(0, 1);
       },
     }, name)));
     const animChips = chips([['coord', 'Coordenada por coordenada'], ['todo', 'Todo a la vez'], ['afin', 'Parte lineal, luego traslación']],
@@ -175,12 +242,74 @@ export default {
     const ex = vecEditor({ name: R`\vec x`, color: C.x, dim: n, get: () => shared.x[n], set: (v) => { stop(); shared.x[n] = v; update(); } });
     const cX = new TexBox(), nX = new Note();
 
+    // ---------- pestaña «Operar» ----------
+    const tb = tabs([['una', 'Una función'], ['op', 'Operar']], () => shared.tab, (k) => { stop(); stopOp(); shared.tab = k; tb.refresh(); rebuildS(); update(); if (k === 'op') runOp(0, 1); });
+    let stopOp = () => {};
+    const runOp = (a, b) => { stopOp(); shared.so = a; update(); stopOp = animate(a, b, 1300 * Math.max(1, opStages()), (v) => { shared.so = v; update(); }); };
+    const opChips = chips(OPS, () => shared.op, (k) => { stopOp(); shared.op = k; rebuildS(); update(); runOp(0, 1); });
+    const opDesc = new Note();
+    const orderChips = chips([['TS', 'T ∘ S: primero S'], ['ST', 'S ∘ T: primero T']], () => shared.order, (k) => { stopOp(); shared.order = k; rebuildS(); update(); runOp(0, 1); });
+    const sSig = new TexBox(), sFields = h('div'), sPre = h('div', { class: 'presets' }), sErr = new Note();
+    const sCard = card('La otra función S', orderChips.el, sSig.el, sFields, sErr.el, sPre);
+    const ks = slider({ label: 'k', min: -3, max: 3, step: 0.1, get: () => shared.k, set: (v) => { stopOp(); shared.k = Math.round(v * 10) / 10; update(); } });
+    const kCard = card('El número k', ks.el);
+    const cRes = new TexBox(), cRes2 = new TexBox(), cRes3 = new TexBox(), nRes = new Note();
+    const so = slider({ label: 's', min: 0, max: 1, step: 0.005, get: () => shared.so, set: (v) => { stopOp(); shared.so = v; update(); } });
+    const opPhase = new Note();
+    // un editor por dimensión: el vector de partida es de ℝⁿ, salvo en la transpuesta (ℝᵐ)
+    const exEds = Object.fromEntries([2, 3].map((d) => [d, vecEditor({ name: R`\vec x`, color: C.x, dim: d, get: () => shared.x[d], set: (v) => { stopOp(); shared.x[d] = v; update(); } })]));
+    const exOpBox = h('div');
+    const cOpX = new TexBox(), nOpX = new Note(), cMat = new TexBox(), nMat = new Note();
+    const go = (id) => () => { location.hash = `#${id}`; };
+    const linkRow = buttonRow(button('Producto de matrices →', go('producto')), button('Suma de matrices →', go('sumamat')),
+      button('Inversa →', go('inversa')), button('Transpuesta →', go('transpuesta')));
+
+    // la segunda función S
+    const opS = { sig: '', vars: [], din: 2, dout: 2, trees: [], errors: [] };
+    const sigOf = () => (shared.op === 'suma' ? `${n}${m}` : shared.op === 'comp' ? (shared.order === 'TS' ? `${n}${n}` : `${m}${m}`) : '');
+    const Sf = (p) => { const e = Object.fromEntries(opS.vars.map((v, i) => [v, p[i]])); return opS.trees.map((t) => evalExpr(t, e)); };
+    function rebuildS() {
+      const sig = sigOf();
+      orderChips.el.style.display = shared.op === 'comp' ? '' : 'none';
+      sCard.style.display = sig ? '' : 'none';
+      kCard.style.display = shared.op === 'esc' ? '' : 'none';
+      if (!sig || sig === opS.sig) return;
+      const din = +sig[0], dout = +sig[1], sv = VAR.slice(0, din), ex = shared.sEx[sig];
+      Object.assign(opS, { sig, vars: sv, din, dout, trees: ex.map(() => ({ t: 'num', v: 0 })), errors: ex.map(() => null) });
+      const comp = (i) => {
+        try { opS.trees[i] = parse(ex[i], sv); opS.errors[i] = null; } catch (e) { if (!(e instanceof ExprError)) throw e; opS.errors[i] = e.message; }
+      };
+      ex.forEach((_, i) => comp(i));
+      const fs = ex.map((txt, i) => {
+        const inp = h('input', { type: 'text', class: 'expr', value: txt, spellcheck: 'false', autocomplete: 'off' });
+        inp.addEventListener('input', () => { stopOp(); ex[i] = inp.value; comp(i); update(); });
+        return { inp, row: h('label', { class: 'expr-row' }, tex(`S_${i + 1}`), '=', inp) };
+      });
+      opS.fields = fs;
+      sFields.replaceChildren(h('div', { class: 'expr-box' }, ...fs.map((f) => f.row)));
+      sPre.replaceChildren(...SPRE[sig].map(([name, e]) => h('button', {
+        class: 'chip', onclick: () => { e.forEach((t, i) => { ex[i] = t; fs[i].inp.value = t; comp(i); }); update(); runOp(0, 1); },
+      }, name)));
+      sSig.set(R`S: \mathbb{R}^${din} \to \mathbb{R}^${dout},\quad S(${sv.join(', ')})`);
+    }
+
     panel.append(
       ...intro('Transformaciones como funciones',
         R`Una transformación es una <b>función</b>: entra un vector y sale otro. Aquí se escribe con fórmulas, como $T(x, y) = (2x + y,\ x + 2y)$, y se ve aplicarse poco a poco. Luego se comprueba si es <b>lineal</b>, es decir, si respeta sumas y múltiplos. Las lineales son exactamente las que se pueden escribir con una matriz.`),
       card('Tipo', kindChips.el, rich(D === 2 ? R`$\mathbb{R}^2 \to \mathbb{R}^2$ se ve en la vista 2D; los demás tipos abren la vista 3D.` : R`En 3D, $\mathbb{R}^2$ es el plano $z = 0$. ${n === 3 && m === 2 ? 'La salida cae en ese plano.' : n === 2 ? 'La entrada es ese plano y la salida puede salirse de él.' : ''}`, 'p', 'note')),
       card('La fórmula', h('div', { class: 'expr-box' }, ...fields.map((f) => f.row)), errNote.el, pre, cT.el,
         rich(R`Se puede escribir $2x$, $x\cdot y$, $x^2$, $(x+y)/2$, $\sin(y)$, $\cos$, $\exp$, $\sqrt{\ }$… Las variables son ${vars.map((v) => `$${v}$`).join(', ')}.`, 'p', 'note')),
+      tb.el, tb.panes.una, tb.panes.op,
+    );
+    tb.panes.op.append(
+      card('Operación', opChips.el, opDesc.el),
+      sCard, kCard,
+      card('Resultado', cRes.el, cRes2.el, cRes3.el, nRes.el),
+      card('Verla', so.el, buttonRow(button('▶ Animar', () => runOp(0, 1), 'primary'), button('↺ Inicio', () => { stopOp(); shared.so = 0; update(); })), opPhase.el),
+      card('Con un vector', exOpBox, cOpX.el, nOpX.el),
+      details('Lo mismo con matrices', cMat.el, nMat.el, linkRow),
+    );
+    tb.panes.una.append(
       card('Aplicar poco a poco', animChips.el, ss.el,
         buttonRow(button('Siguiente paso ▶', next, 'primary'), button('▶ Todo seguido', () => run(0, 1)), button('↺ Inicio', () => { stop(); shared.s = 0; update(); })),
         phase.el, cStep.el),
@@ -213,13 +342,219 @@ export default {
     }
 
     function update() {
+      tArr.setVisible(false); sArr.setVisible(false); sArr2.setVisible(false);
+      if (shared.tab === 'op') updateOp(); else updateUna();
+    }
+
+    // ---------- modelo de cada operación ----------
+    const opStages = () => opModel().stages?.length ?? 1;
+    function opModel() {
+      const op = shared.op, Tc = info, k = shared.k;
+      const linT = Tc.type === 'lineal', affT = !!Tc.A;
+      const Vn = vars, Vm = VAR.slice(0, m);
+      if (op === 'comp') {
+        const Sc = classifyF(Sf, opS.din, opS.dout), TS = shared.order === 'TS';
+        const first = TS ? { f: Sf, c: Sc, trees: opS.trees, nm: 'S' } : { f: T, c: Tc, trees, nm: 'T' };
+        const second = TS ? { f: T, c: Tc, trees, nm: 'T' } : { f: Sf, c: Sc, trees: opS.trees, nm: 'S' };
+        const F = (p) => second.f(first.f(p));
+        const mid = TS ? n : m, mp = Object.fromEntries(VAR.slice(0, mid).map((v, i) => [v, first.trees[i]]));
+        const fn = `${second.nm}\\circ ${first.nm}`;
+        return {
+          ok: true, d0: n, dout: m, F, fn, Fc: classifyF(F, n, m),
+          stages: [{ f: first.f, nm: first.nm }, { f: second.f, nm: second.nm }],
+          sym: second.trees.map((t) => texExpr(subst(t, mp))), symHead: R`${second.nm}\big(${first.nm}(${Vn.join(', ')})\big)`,
+          pieces: [first, second],
+        };
+      }
+      if (op === 'suma') {
+        const Sc = classifyF(Sf, n, m), F = (p) => add(T(p), Sf(p));
+        return {
+          ok: true, d0: n, dout: m, F, fn: 'T + S', Fc: classifyF(F, n, m), stages: [{ f: F, nm: 'T + S' }],
+          sym: trees.map((t, i) => `\\left(${texExpr(t)}\\right) + \\left(${texExpr(opS.trees[i])}\\right)`), symHead: R`T(${Vn.join(', ')}) + S(${Vn.join(', ')})`, Sc,
+        };
+      }
+      if (op === 'esc') {
+        const F = (p) => scale(T(p), k);
+        return {
+          ok: true, d0: n, dout: m, F, fn: `${fmt(k)}\\,T`, Fc: classifyF(F, n, m),
+          stages: [{ f: T, nm: 'T' }, { f: (q) => scale(q, k), nm: `${fmt(k)}\\cdot` }],
+          sym: trees.map((t) => `${fmt(k)}\\left(${texExpr(t)}\\right)`), symHead: R`${fmt(k)}\,T(${Vn.join(', ')})`,
+        };
+      }
+      if (op === 'inv') {
+        if (n !== m) return { ok: false, msg: R`$T$ va de $\mathbb{R}^${n}$ a $\mathbb{R}^${m}$: entrada y salida tienen distinta dimensión, así que no puede haber inversa. ${n > m ? 'Al bajar de dimensión, muchos puntos caen en el mismo sitio y no se sabe a cuál volver.' : 'Al subir de dimensión, la salida es solo un plano dentro de ℝ³: los puntos fuera de él no vienen de ningún lado.'}` };
+        if (!affT) return { ok: false, msg: R`$T$ no es lineal ni afín. Invertirla sería despejar ${vars.map((v) => `$${v}$`).join(', ')} de ecuaciones no lineales: a veces se puede a mano y a veces no (si dos puntos van a parar al mismo sitio). Aquí se invierten las lineales y afines, que siempre se despejan con la matriz.` };
+        const A = Tc.A, dA = det(A);
+        if (Math.abs(dA) < 1e-9) return { ok: false, msg: R`$\det A = 0$: $T$ aplasta el espacio (la rejilla queda en ${n === 2 ? 'una recta' : 'un plano o una recta'}). Muchos puntos van al mismo sitio, así que no se puede deshacer: <b>no hay inversa</b>.` };
+        const Ai = inverse(A), b = Tc.T0, Ti = (y) => matVec(Ai, sub(y, b));
+        return {
+          ok: true, d0: n, dout: n, F: Ti, fn: 'T^{-1}', Fc: { type: linT ? 'lineal' : 'afin', A: Ai, T0: Ti(Array(n).fill(0)) },
+          stages: [{ f: T, nm: 'T' }, { f: Ti, nm: 'T^{-1}' }], A, Ai, b,
+        };
+      }
+      // transpuesta
+      if (!linT) return { ok: false, msg: affT ? R`$T$ es afín (tiene un término constante). La transpuesta se define para transformaciones <b>lineales</b>; quítale la constante y prueba otra vez.` : R`$T$ no es lineal: no tiene matriz, y la transpuesta solo existe para transformaciones lineales.` };
+      const At = transpose(Tc.A), F = (p) => matVec(At, p);
+      return {
+        ok: true, d0: m, dout: n, F, fn: 'T^{\\mathsf T}', Fc: { type: 'lineal', A: At, T0: Array(n).fill(0) },
+        stages: [{ f: F, nm: 'T^{\\mathsf T}' }], At, Vm,
+      };
+    }
+
+    function updateOp() {
+      const Mo = opModel(), op = shared.op, s = shared.so;
+      const fa = Mo.ok && ['comp', 'suma', 'esc'].includes(op) ? `(${Mo.fn})` : Mo.fn; // (T + S)(x), no T + S(x)
+      opDesc.set('', {
+        comp: R`Aplicar una función y luego otra. $T\circ S$ se lee «$T$ después de $S$»: $(T\circ S)(\vec x) = T(S(\vec x))$.`,
+        suma: R`Sumar los resultados: $(T + S)(\vec x) = T(\vec x) + S(\vec x)$. Las dos tienen que ir del mismo espacio al mismo espacio.`,
+        esc: R`Multiplicar el resultado por un número: $(kT)(\vec x) = k\,T(\vec x)$.`,
+        inv: R`La función que <b>deshace</b> $T$: si $T(\vec x) = \vec y$, entonces $T^{-1}(\vec y) = \vec x$. Se obtiene despejando.`,
+        tr: R`La función que va en sentido contrario y cumple $T(\vec u)\cdot\vec v = \vec u\cdot T^{\mathsf T}(\vec v)$. No deshace $T$: es otra cosa.`,
+      }[op]);
+      [so, ks, opChips, orderChips].forEach((c) => c.refresh());
+      const errS = opS.errors.findIndex((e) => e);
+      sErr.set(errS >= 0 && sigOf() ? 'neg' : '', errS >= 0 && sigOf() ? `S_${errS + 1}: ${opS.errors[errS]}` : '');
+      opS.fields?.forEach((f, i) => f.inp.classList.toggle('bad', !!opS.errors[i]));
+
+      // --- escena ---
+      const d0 = Mo.ok ? Mo.d0 : n, G = geoFor(d0), stages = Mo.ok ? Mo.stages : [];
+      setGhost(`op${d0}`, () => segsWith(G.lines, (p) => pad(p, D)));
+      const K = Math.max(1, stages.length);
+      const placeOp = (p, t) => {
+        let cur = p;
+        const pts = [p];
+        for (const stg of stages) { cur = stg.f(cur); if (!finite(cur)) return null; pts.push(cur); }
+        if (!stages.length) return pad(p, D);
+        const kk = Math.min(K - 1, Math.floor(t * K)), loc = clamp(t * K - kk, 0, 1);
+        const a = pad(pts[kk], D), b = pad(pts[kk + 1], D);
+        return a.map((v, i) => v + (b[i] - v) * loc);
+      };
+      grid.set(segsWith(G.lines, (p) => placeOp(p, s)));
+      boxSeg.set(segsWith(G.box, (p) => placeOp(p, s)));
+      const o = placeOp(G.O, s);
+      oDot.setVisible(!!o).set(o ?? pad(G.O, D));
+      eArr.forEach((a, j) => {
+        if (j >= d0) return a.setVisible(false);
+        const q = placeOp(G.E[j], s);
+        a.setVisible(!!q && !!o);
+        if (q && o) a.set(o, q).setLabel(s < 0.01 ? R`\vec e_${j + 1}` : s > 0.99 && Mo.ok ? R`${fa}(\vec e_${j + 1})` : '');
+      });
+      const x = shared.x[d0];
+      xg.set(pad(G.O, D), pad(x, D));
+      const qx = placeOp(x, s);
+      xa.setVisible(!!qx);
+      if (qx) xa.set(pad(G.O, D), qx).setLabel(s > 0.99 && Mo.ok ? R`${fa}(\vec x)` : '');
+      if (op === 'suma' && Mo.ok) {
+        const tx = T(x), sx = Sf(x);
+        if (finite(tx) && finite(sx)) {
+          tArr.setVisible(true).set(pad(G.O, D), pad(tx, D));
+          sArr.setVisible(true).set(pad(G.O, D), pad(sx, D));
+          sArr2.setVisible(true).set(pad(tx, D), pad(add(tx, sx), D));
+        }
+      }
+      exOpBox.firstChild !== exEds[d0].el && exOpBox.replaceChildren(exEds[d0].el);
+      exEds[d0].refresh();
+
+      if (!Mo.ok) {
+        cRes.set(''); cRes2.set(''); cRes3.set('');
+        nRes.set('neg', Mo.msg);
+        opPhase.set('', 'No hay nada que animar: la rejilla se queda como está.');
+        cOpX.set(''); nOpX.set('', ''); cMat.set(''); nMat.set('', '');
+        return;
+      }
+      const Vin = VAR.slice(0, d0), Fc = Mo.Fc, simp = Fc.A ? affTex(Fc.A, Fc.type === 'afin' ? Fc.T0 : null, Vin) : null;
+      const col = (arr) => R`\begin{bmatrix}${arr.join('\\\\')}\end{bmatrix}`;
+
+      // --- fases de la animación ---
+      const kk = Math.min(K - 1, Math.floor(s * K - 1e-9));
+      opPhase.set(s > 0.995 ? 'pos' : '', s < 0.005 ? R`Inicio: la rejilla de $\mathbb{R}^${d0}$ sin transformar.`
+        : s > 0.995 ? (op === 'inv' ? R`Listo: después de $T$ y $T^{-1}$ todo volvió a su sitio. $T^{-1}(T(\vec x)) = \vec x$.` : R`Listo: cada punto $\vec x$ está en $${fa}(\vec x)$.`)
+          : K === 1 ? R`Cada punto viaja de $\vec x$ a $${fa}(\vec x)$.`
+            : R`Paso ${kk + 1} de ${K}: se aplica $${Mo.stages[kk].nm}$${kk ? ' a lo que dejó el paso anterior' : ''}.`);
+
+      // --- resultado ---
+      if (op === 'inv') {
+        const eqs = Mo.A.map((r, i) => R`${OUT[i]} = ${affTex([r], [Mo.b[i]], vars)[0]}`);
+        const sol = affTex(Mo.Ai, Mo.Fc.T0, OUT.slice(0, n)).map((t, i) => R`${vars[i]} = ${t}`);
+        cRes.set(R`\begin{gathered}\begin{cases}${eqs.join('\\\\')}\end{cases}\\[2pt] \Downarrow \\[4pt] \begin{cases}${sol.join('\\\\')}\end{cases}\end{gathered}`);
+        cRes2.set(R`T^{-1}(${vars.join(', ')}) = ${col(simp)}`);
+        cRes3.set('');
+        nRes.set('pos', R`Se escribe $\vec x' = T(\vec x)$ y se despeja $\vec x$ en función de $\vec x'$ (resolviendo el sistema). Al final se cambia el nombre de las variables: ${OUT.slice(0, n).map((v, i) => `$${v} \\to ${vars[i]}$`).join(', ')}.`);
+      } else if (op === 'tr') {
+        cRes.set(R`T^{\mathsf T}(${Mo.Vm.join(', ')}) = ${col(simp)}`);
+        cRes2.set(R`\begin{gathered}T(${vars.join(', ')}) = ${col(affTex(info.A, null, vars))} \\[4pt] T^{\mathsf T}(\vec e_j) = \text{pesos de la fórmula } j \text{ de } T\end{gathered}`);
+        cRes3.set('');
+        nRes.set('pos', R`Truco para leerla: la fórmula de la coordenada $j$ de $T$ dice con qué pesos se combinan ${vars.map((v) => `$${v}$`).join(', ')}. Esos mismos pesos forman el vector $T^{\mathsf T}(\vec e_j)$: <b>las filas de $T$ se vuelven columnas</b>. $T^{\mathsf T}$ va de $\mathbb{R}^${m}$ a $\mathbb{R}^${n}$, al revés que $T$.`);
+      } else {
+        cRes.set(R`\begin{gathered}${Mo.symHead} \\[4pt] = ${col(Mo.sym)}\end{gathered}`);
+        cRes2.set('');
+        cRes3.set(simp ? R`\begin{gathered}(${Mo.fn})(${Vin.join(', ')}) \\[4pt] = ${col(simp)}\end{gathered}` : '');
+        const tp = { lineal: 'lineal', afin: 'afín', no: 'no lineal' }[Fc.type];
+        nRes.set(Fc.type === 'no' ? 'zero' : 'pos', (simp ? R`Al simplificar queda la fórmula de abajo, y el resultado es <b>${tp}</b>.` : R`No se simplifica a una forma «número × variable»: el resultado es <b>${tp}</b>.`)
+          + (op === 'comp' && n === m && info.A && Mo.pieces[0].c.A && Mo.pieces[1].c.A ? (() => {
+            const other = (p) => (shared.order === 'TS' ? Sf(T(p)) : T(Sf(p)));
+            const same = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, 0]].map((v) => v.slice(0, n)).every((v) => near(other(v), Mo.F(v)));
+            return same ? R` Aquí, cambiar el orden da lo mismo: $T$ y $S$ <b>conmutan</b> (pasa pocas veces).` : R` Si cambias el orden, el resultado es <b>otro</b>: componer no es conmutativo.`;
+          })() : ''));
+      }
+
+      // --- con un vector ---
+      const V = (w) => (finite(w) ? tv(w) : R`\text{no definido}`);
+      if (op === 'comp') {
+        const [f1, f2] = Mo.pieces, y1 = f1.f(x);
+        cOpX.set(R`\begin{gathered}${f1.nm}(\vec x) = ${f1.nm}${tv(x)} = ${V(y1)} \\[4pt] ${f2.nm}(${f1.nm}(\vec x)) = ${f2.nm}${V(y1)} = ${clr(C.w, V(Mo.F(x)))}\end{gathered}`);
+        nOpX.set('', R`Lo que sale de $${f1.nm}$ es lo que entra en $${f2.nm}$. Por eso las dimensiones tienen que encajar.`);
+      } else if (op === 'suma') {
+        cOpX.set(R`\begin{gathered}${clr(C.u, V(T(x)))} + ${clr(C.v, V(Sf(x)))} \\[4pt] = ${clr(C.w, V(Mo.F(x)))}\end{gathered}`);
+        nOpX.set('', R`En la escena: $T(\vec x)$ (naranja) y $S(\vec x)$ (violeta) se suman con la regla del paralelogramo.`);
+      } else if (op === 'esc') {
+        cOpX.set(R`\begin{gathered}${shared.k < 0 ? `(${fmt(shared.k)})` : fmt(shared.k)}\cdot T${tv(x)} = ${fmt(shared.k)}\cdot ${V(T(x))} \\[4pt] = ${clr(C.w, V(Mo.F(x)))}\end{gathered}`);
+        nOpX.set('', shared.k < 0 ? R`Con $k < 0$, además de estirar, el resultado se voltea al lado contrario del origen.` : '');
+      } else if (op === 'inv') {
+        const y = T(x);
+        cOpX.set(R`\begin{gathered}T${tv(x)} = ${V(y)} \\[4pt] T^{-1}${V(y)} = ${clr(C.w, V(Mo.F(y)))}\end{gathered}`);
+        nOpX.set('pos', R`$T^{-1}$ devuelve cada punto a donde estaba antes de $T$.`);
+      } else {
+        const u = [1, 2, -1].slice(0, n), Tu = T(u), Ttv = Mo.F(x);
+        cOpX.set(R`\begin{gathered}T^{\mathsf T}${tv(x)} = ${clr(C.w, V(Ttv))} \\[4pt] \vec u = ${tv(u)} \\[4pt] T(\vec u)\cdot\vec x = ${fmt(dot(Tu, x))},\quad \vec u\cdot T^{\mathsf T}(\vec x) = ${fmt(dot(u, Ttv))}\end{gathered}`);
+        nOpX.set('pos', R`Los dos productos punto dan lo mismo: esa es la propiedad que <b>define</b> la transpuesta. Medir $T(\vec u)$ con la regla $\vec x$ equivale a medir $\vec u$ con la regla $T^{\mathsf T}(\vec x)$.${n === m && near(matMul(transpose(info.A), info.A).flat(), matMul(transpose(info.A), info.A).flat().map((_, i) => (i % (n + 1) === 0 ? 1 : 0))) ? R` Además, aquí $T$ es una rotación o reflexión: $T^{\mathsf T} = T^{-1}$.` : ''}`);
+      }
+
+      // --- con matrices ---
+      const Mt = (c) => (c?.A ? tm(c.A) : null);
+      if (op === 'comp') {
+        const [f1, f2] = Mo.pieces;
+        if (f1.c.type === 'lineal' && f2.c.type === 'lineal') {
+          cMat.set(R`\begin{gathered}[${Mo.fn}] = ${Mt(f2.c)}${Mt(f1.c)} \\[4pt] = ${tm(Mo.Fc.A)}\end{gathered}`);
+          nMat.set('', R`Componer es <b>multiplicar matrices</b>, y la que actúa primero (${f1.nm}) va a la <b>derecha</b>, porque $${f2.nm}(${f1.nm}(\vec x)) = A_{${f2.nm}}(A_{${f1.nm}}\vec x) = (A_{${f2.nm}}A_{${f1.nm}})\vec x$.`);
+        } else { cMat.set(''); nMat.set('', R`Con matrices solo se puede si las dos son lineales (o afines, añadiendo la traslación aparte).`); }
+      } else if (op === 'suma') {
+        if (info.type === 'lineal' && Mo.Sc.type === 'lineal') {
+          cMat.set(R`\begin{gathered}[T + S] = ${tm(info.A)} + ${tm(Mo.Sc.A)} \\[4pt] = ${tm(Mo.Fc.A)}\end{gathered}`);
+          nMat.set('', R`Se suman <b>entrada por entrada</b>: la columna $j$ es $T(\vec e_j) + S(\vec e_j)$.`);
+        } else { cMat.set(''); nMat.set('', R`Con matrices solo se puede si las dos son lineales.`); }
+      } else if (op === 'esc') {
+        if (info.type === 'lineal') { cMat.set(R`\begin{gathered}[${fmt(shared.k)}\,T] = ${fmt(shared.k)}${tm(info.A)} \\[4pt] = ${tm(Mo.Fc.A)}\end{gathered}`); nMat.set('', 'Cada entrada se multiplica por $k$.'); }
+        else { cMat.set(''); nMat.set('', R`Con matrices solo se puede si $T$ es lineal.`); }
+      } else if (op === 'inv') {
+        cMat.set(R`\begin{gathered}A^{-1} = ${tm(Mo.A)}^{-1} \\[4pt] = ${tm(Mo.Ai)}\end{gathered}`);
+        nMat.set('', R`Despejar es resolver el sistema $A\vec x = \vec x'${info.type === 'afin' ? R` - \vec b` : ''}$: la matriz de $T^{-1}$ es la inversa de la de $T$.${info.type === 'afin' ? R` Como $T$ es afín, primero se deshace la traslación y luego la parte lineal.` : ''}`);
+      } else {
+        cMat.set(R`\begin{gathered}A^{\mathsf T} = ${tm(info.A)}^{\mathsf T} \\[4pt] = ${tm(Mo.At)}\end{gathered}`);
+        nMat.set('', R`Las filas de $A$ pasan a ser columnas. $A$ es de ${m}×${n} y $A^{\mathsf T}$ de ${n}×${m}.`);
+      }
+    }
+
+    function updateUna() {
       const s = shared.s, x = shared.x[n];
       // --- escena ---
+      setGhost('una', () => toSegs(lines, null));
       grid.set(toSegs(lines, s));
       boxSeg.set(toSegs(boxLines, s));
       const o = place(O, s);
       oDot.setVisible(!!o).set(o ?? pad(O, D));
       eArr.forEach((a, j) => {
+        if (j >= n) return a.setVisible(false);
         const q = place(E[j], s);
         a.setVisible(!!q && !!o);
         if (q && o) a.set(o, q).setLabel(s < 0.01 ? R`\vec e_${j + 1}` : s > 0.99 ? R`T(\vec e_${j + 1})` : '');
@@ -269,8 +604,8 @@ export default {
       const V = (w) => (finite(w) ? tv(w) : R`\text{no definido}`);
       cTests.set(R`\begin{gathered}\vec u = ${tv(u)},\ \vec v = ${tv(v)},\ c = ${c} \\[6pt]
         \text{1) } T(\vec 0) = ${V(T0)}\ ${t1 ? OK : BAD} \\[6pt]
-        \text{2) } T(\vec u + \vec v) = ${V(Tuv)} \ ${t2 ? '=' : R`\ne`}\ T(\vec u) + T(\vec v) = ${V(add(Tu, Tv))}\ ${t2 ? OK : BAD} \\[6pt]
-        \text{3) } T(c\,\vec u) = ${V(Tcu)} \ ${t3 ? '=' : R`\ne`}\ c\,T(\vec u) = ${V(scale(Tu, c))}\ ${t3 ? OK : BAD}\end{gathered}`);
+        \text{2) } T(\vec u + \vec v) = ${V(Tuv)} \\ ${t2 ? '=' : R`\ne`}\ T(\vec u) + T(\vec v) = ${V(add(Tu, Tv))}\ ${t2 ? OK : BAD} \\[6pt]
+        \text{3) } T(c\,\vec u) = ${V(Tcu)} \\ ${t3 ? '=' : R`\ne`}\ c\,T(\vec u) = ${V(scale(Tu, c))}\ ${t3 ? OK : BAD}\end{gathered}`);
       if (info.type === 'lineal') nLin.set('pos', R`<b>Es lineal.</b> Pasa las tres pruebas, y también con otros vectores elegidos al azar. Cada coordenada es una suma de «número × variable».`);
       else if (info.type === 'afin') nLin.set('zero', R`<b>No es lineal: es afín.</b> Falla porque $T(\vec 0) \ne \vec 0$: hay un término constante. Por eso también fallan la 2 y la 3: en $T(\vec u) + T(\vec v)$ la constante se suma dos veces, y en $c\,T(\vec u)$ se multiplica por $c$. Si le quitas la constante, $T(\vec x) - T(\vec 0)$ sí es lineal.`);
       else nLin.set('neg', R`<b>No es lineal.</b> ${t1 && t2 && t3 ? 'Con estos $\\vec u$, $\\vec v$ pasa por casualidad, pero falla con otros vectores. ' : ''}Hay términos que no son «número × variable» (potencias, productos de variables, $\\sin$…): duplicar la entrada no duplica la salida.`);
@@ -279,25 +614,26 @@ export default {
       const colTex = (j) => clr(BASIS[j].color, tv(sub(T(E[j]), info.type === 'afin' ? info.T0 : Array(m).fill(0))));
       if (info.A) {
         const Atex = R`\begin{bmatrix}${info.A.map((r) => r.map((a, j) => clr(BASIS[j].color, fmt(a))).join('&')).join('\\\\')}\end{bmatrix}`;
-        const imgs = E.map((e, j) => R`T(\vec e_${j + 1}) ${info.type === 'afin' ? R`- T(\vec 0)` : ''} = ${colTex(j)}`).join(',\\quad ');
+        const imgs = E.map((e, j) => R`T(\vec e_${j + 1}) ${info.type === 'afin' ? R`- T(\vec 0)` : ''} = ${colTex(j)}`).join(n === 3 || info.type === 'afin' ? ' \\\\[2pt] ' : ',\\quad ');
         cM.set(R`\begin{gathered}${imgs} \\[6pt] T(\vec x) = \underbrace{${Atex}}_{A\ (${m}\times ${n})}${vars.length ? R`\begin{bmatrix}${vars.join('\\\\')}\end{bmatrix}` : ''}${info.type === 'afin' ? R` + \underbrace{${tv(info.T0)}}_{\vec b}` : ''}\end{gathered}`);
         nM.set('pos', R`Las columnas de $A$ son ${info.type === 'afin' ? 'los desplazamientos $T(\\vec e_j) - T(\\vec 0)$' : 'las imágenes $T(\\vec e_j)$'}. $A$ tiene ${m} filas porque la salida tiene ${m} coordenadas y ${n} columnas porque la entrada tiene ${n}.${m !== n ? ' No es cuadrada: no tiene determinante ni inversa.' : ''}`);
       } else {
         const comb = E.reduce((acc, e, j) => add(acc, scale(T(e), x[j])), Array(m).fill(0));
-        cM.set(E.map((e, j) => R`T(\vec e_${j + 1}) = ${V(T(e))}`).join(',\\quad '));
+        cM.set(R`\begin{gathered}${E.map((e, j) => R`T(\vec e_${j + 1}) = ${V(T(e))}`).join(' \\\\[2pt] ')}\end{gathered}`);
         nM.set('neg', R`<b>No hay matriz.</b> Las imágenes $T(\vec e_j)$ se pueden calcular, pero no reconstruyen $T$: con el $\vec x$ de abajo, ${vars.map((vv, j) => `${fmt(x[j])}\\,T(\\vec e_${j + 1})`).map((t) => `$${t}$`).join(' + ')} $= ${V(comb)}$, pero $T(\vec x) = ${V(Tx)}$.`);
       }
 
       // --- vector x ---
       const sub1 = trees.map((t) => texExpr(t, env(x)));
-      cX.set(R`T${R`\begin{pmatrix}${x.map((a) => fmt(a)).join('\\\\')}\end{pmatrix}`} = \begin{bmatrix}${sub1.join('\\\\')}\end{bmatrix} = ${V(Tx)}${info.type === 'lineal' ? R` = ${x.map((a, j) => `${a < 0 ? `(${fmt(a)})` : fmt(a)}\\,${colTex(j)}`).join(' + ')}` : ''}`);
+      cX.set(R`\begin{gathered}T${R`\begin{pmatrix}${x.map((a) => fmt(a)).join('\\\\')}\end{pmatrix}`} = \begin{bmatrix}${sub1.join('\\\\')}\end{bmatrix} = ${V(Tx)}${info.type === 'lineal' ? R` \\[4pt] = ${x.map((a, j) => `${a < 0 ? `(${fmt(a)})` : fmt(a)}\\,${colTex(j)}`).join(' + ')}` : ''}\end{gathered}`);
       const nxx = norm(x), lam = n === m && nxx > 1e-9 && ok ? Tx.reduce((acc, t, i) => acc + t * x[i], 0) / (nxx * nxx) : null;
       if (lam == null || info.type !== 'lineal') nX.set('', '');
       else if (norm(sub(Tx, scale(x, lam))) < 1e-9 * (1 + norm(Tx))) nX.set('pos', R`<b>$\vec x$ es un autovector:</b> $T(\vec x) = ${fmt(lam) === '1' ? '' : fmt(lam) === '-1' ? '-' : `${fmt(lam)}\\,`}\vec x$. La transformación solo lo ${Math.abs(lam) < 1e-9 ? 'aplasta a $\\vec 0$' : lam < 0 ? 'estira y lo voltea' : Math.abs(lam - 1) < 1e-9 ? 'deja igual' : 'estira'}, sin cambiarle la dirección. El autovalor es $\lambda = ${fmt(lam)}$.`);
       else nX.set('', R`$T(\vec x)$ no es un múltiplo de $\vec x$: este $\vec x$ no es autovector. Busca direcciones donde la flecha amarilla quede sobre la recta de $\vec x$.`);
     }
 
+    rebuildS();
     refreshAll();
-    return { destroy: () => stop() };
+    return { destroy: () => { stop(); stopOp(); } };
   },
 };
