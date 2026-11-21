@@ -43,6 +43,26 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 25 | SVD (girar, estirar, girar; valores singulares) | ✓ | ✓ |
 | 26 | Formas cuadráticas (ejes principales, definida/indefinida, cónicas y cuádricas) | ✓ | ✓ |
 
+### Pestaña «Cómo se calcula»
+
+Los temas con un cálculo no elemental tienen dos pestañas: **Explorar** y **Cómo se calcula**. La segunda hace el procedimiento paso a paso con los números de la matriz actual. Cada paso explica *por qué* se hace así, y la escena lo muestra:
+
+| Tema | Procedimiento |
+|------|---------------|
+| Producto cruz | determinante con î, ĵ, k̂; cada componente es la sombra del paralelogramo |
+| Determinante | eliminación hasta triangular (cizallas que no cambian el área) |
+| Matriz inversa | Gauss-Jordan sobre [A \| I] |
+| Rango y núcleo | escalonar Ax = 0, variables libres, teorema del rango |
+| Cambio de base | Gauss-Jordan sobre [P \| x] (cada operación transforma todo el espacio) |
+| Autovalores | det(A − λI), raíces (deslizador de λ: la rejilla se aplana) y núcleo de A − λI |
+| Diagonalización | autovalores → P y D → P⁻¹ → AP = PD → Aᵏ |
+| QR | Gram-Schmidt con números: sombras, normalizar, armar Q y R |
+| Mínimos cuadrados | ecuaciones normales AᵀA ĉ = Aᵀy (el error es perpendicular) |
+| SVD | AᵀA → λ → V → σ = √λ → uᵢ = Avᵢ/σᵢ |
+| Formas cuadráticas | ejes principales (girar) y completar cuadrados (cizallar) |
+
+Sistemas, LU y Gram-Schmidt ya eran procedimientos paso a paso en su vista principal.
+
 ## Estructura
 
 ```
