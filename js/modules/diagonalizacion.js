@@ -1,6 +1,6 @@
 import { Arrow, Lattice, Polyline, Dot, C } from '../core/stage.js';
-import { identity, lerpMat, matMul, matVec, transpose, inverse, eigen, det, add, scale, fmt, tv, tm, clr } from '../core/math.js';
-import { R, h, intro, card, details, tryList, vecEditor, matEditor, slider, button, buttonRow, chips, TexBox, Note, rich, animate } from '../core/ui.js';
+import { identity, lerpMat, matMul, matVec, transpose, inverse, eigen, det, add, scale, polyTex, fmt, pf, tv, tm, clr } from '../core/math.js';
+import { R, h, intro, card, details, tryList, vecEditor, matEditor, slider, button, buttonRow, chips, TexBox, Note, rich, animate, tabs, Stepper } from '../core/ui.js';
 import { basisColors } from '../core/presets.js';
 import { LineView } from '../core/geom.js';
 
@@ -30,8 +30,8 @@ const PRE = {
 };
 
 const state = {
-  2: { A: PRE[2][0][1], x: [2, 1], mode: 'pasos', s: 3, k: 0 },
-  3: { A: PRE[3][0][1], x: [2, 0, 1], mode: 'pasos', s: 3, k: 0 },
+  2: { A: PRE[2][0][1], x: [2, 1], mode: 'pasos', s: 3, k: 0, tab: 'exp', step: 0 },
+  3: { A: PRE[3][0][1], x: [2, 0, 1], mode: 'pasos', s: 3, k: 0, tab: 'exp', step: 0 },
 };
 
 /** Multiplicidad algebraica de una raíz del polinomio (coeficientes de mayor a menor grado). */
@@ -57,10 +57,11 @@ function diagonalize(A) {
   if (cols.length < n) return { ok: false, E, cols, info, complex: realCount < n };
   let P = transpose(cols.map((c) => c.v));
   // det P > 0: así el paso P⁻¹ es una deformación continua, sin aplastar el plano por el camino
-  if (det(P) < 0) { cols[n - 1].v = scale(cols[n - 1].v, -1); P = transpose(cols.map((c) => c.v)); }
+  const flipped = det(P) < 0;
+  if (flipped) { cols[n - 1].v = scale(cols[n - 1].v, -1); P = transpose(cols.map((c) => c.v)); }
   const lams = cols.map((c) => c.lambda);
   const Dm = (k = 1) => lams.map((l, i) => lams.map((_, j) => (i === j ? l ** k : 0)));
-  return { ok: true, E, cols, info, P, Pi: inverse(P), lams, Dm };
+  return { ok: true, E, cols, info, P, Pi: inverse(P), lams, Dm, flipped };
 }
 
 const matPow = (A, k) => { let M = identity(A.length); for (let i = 0; i < k; i++) M = matMul(A, M); return M; };
@@ -80,7 +81,7 @@ export default {
     };
     // modo «pasos», s ∈ [0,1]: P⁻¹   [1,2]: D   [2,3]: P
     const M = () => {
-      if (st.mode === 'pot') return powAt(st.k);
+      if (st.mode === 'pot' && st.tab === 'exp') return powAt(st.k);
       if (!F.ok) return st.A;
       const s = st.s;
       if (s <= 1) return lerpMat(I, F.Pi, s);
@@ -99,7 +100,7 @@ export default {
     const xa = new Arrow(stage, C.x, { radius: 0.045, label: ' ' });
     const orbit = new Polyline(stage, C.x, { opacity: 0.5, dashed: true, dash: 0.08 });
     const dots = Array.from({ length: KMAX + 1 }, () => new Dot(stage, C.x, { radius: dim === 2 ? 0.07 : 0.06 }));
-    stage.addHandle({ color: C.x, get: () => st.x, set: (p) => { stop(); st.x = p; update(); } });
+    stage.addHandle({ color: C.x, visible: () => st.tab === 'exp', get: () => st.x, set: (p) => { stop(); st.x = p; update(); } });
 
     // --- panel ---
     const runS = (a, b) => { stop(); st.s = a; update(); stop = animate(a, b, 1300 * (b - a), (v) => { st.s = v; update(); }); };
@@ -130,10 +131,96 @@ export default {
     const ex = vecEditor({ name: R`\vec x`, color: C.x, dim, get: () => st.x, set: (v) => { stop(); st.x = v; update(); } });
     const cX = new TexBox(), nX = new Note();
 
+    // --- procedimiento ---
+    // escena de cada paso: s = momento de la animación PDP⁻¹ (0: base de siempre, 1: tras P⁻¹, 3: A),
+    // eig = cuántas direcciones propias se muestran, eg = si se ve la rejilla de autovectores
+    let scene = [];
+    const goS = (b) => { stop(); const a = st.s; if (Math.abs(b - a) < 1e-6) return update(); stop = animate(a, b, 500 * Math.abs(b - a) + 300, (v) => { st.s = v; update(); }); };
+    const stepper = new Stepper((i) => { st.step = i; update(); goS(scene[i]?.s ?? 3); });
+    const Ptex = () => R`\begin{bmatrix}${Array.from({ length: n }, (_, i) => F.cols.map((cc, j) => clr(EC[j], fmt(cc.v[i]))).join('&')).join('\\\\')}\end{bmatrix}`;
+    const Dtex = () => R`\begin{bmatrix}${F.lams.map((l, i) => F.lams.map((_, j) => (i === j ? clr(EC[i], fmt(l)) : '0')).join('&')).join('\\\\')}\end{bmatrix}`;
+    function buildProc() {
+      const A = st.A, E = F.E, steps = [];
+      scene = [];
+      const add1 = (step, sc) => { steps.push(step); scene.push({ s: 0, eig: 0, eg: false, ...sc }); };
+      const lin = (r) => (Math.abs(r) < 1e-12 ? R`\lambda` : R`(\lambda ${r > 0 ? '-' : '+'} ${fmt(Math.abs(r))})`);
+      const pA = n === 2 ? E.poly : E.poly.map((c) => -c);
+      const fac = F.info.map(({ lambda, alg }) => lin(lambda) + (alg > 1 ? `^${alg}` : '')).join('');
+      add1({
+        title: '1. Los autovalores',
+        tex: [...(n === 2 ? [R`\det(A - \lambda I) = ${polyTex(pA)}`] : [R`\det(A - \lambda I) =`, R`${polyTex(pA)}`]), F.info.length ? R`${n === 3 ? '-' : ''}${fac}${F.complex ? R`\cdots` : ''} = 0` : R`\text{sin raíces reales}`,
+          F.info.length ? F.info.map(({ lambda }, i) => R`\lambda_${i + 1} = ${fmt(lambda)}`).join(R`,\ `) : ''].filter(Boolean),
+        why: R`$D$ va a llevar en la diagonal los factores por los que $A$ estira cada dirección propia: los autovalores. Se hallan como en «Autovalores»: las raíces de $\det(A - \lambda I)$, los $\lambda$ que hacen que $A - \lambda I$ aplaste el espacio.`,
+      }, { s: 3 });
+      let k = 0;
+      E.values.forEach(({ lambda, B, vectors }, i) => {
+        k += vectors.length;
+        add1({
+          title: `2. Autovectores de λ = ${fmt(lambda)}`,
+          tex: [R`(A - ${fmt(lambda)}I)\vec v = ${tm(B)}\vec v = \vec 0`, R`\Rightarrow\ ${vectors.map((v, q) => R`\vec v_${k - vectors.length + q + 1} = ${tv(v)}`).join(R`,\ `)}`],
+          why: R`son el núcleo de $A - \lambda I$ (escalonando). ${vectors.length === 1 ? 'Sale una recta: se toma un vector que la represente; cualquier múltiplo no nulo serviría igual.' : `Sale ${vectors.length === 2 ? 'un plano' : 'todo el espacio'}: se toman ${vectors.length} vectores independientes que ${vectors.length === 2 ? 'lo' : 'lo'} generen.`} En la escena aparecen sus rectas: las direcciones que $A$ no gira.`,
+        }, { s: 3, eig: k });
+      });
+      const tab = F.info.map(({ lambda, alg, geo }) => R`\lambda = ${fmt(lambda)}:\ \text{raíz ${alg === 1 ? 'simple' : alg === 2 ? 'doble' : 'triple'}},\ ${geo}\ \text{autovector${geo === 1 ? '' : 'es'}}`);
+      if (!F.ok) {
+        add1({
+          title: '3. ¿Alcanzan? No',
+          tex: tab.length ? [...tab, R`${F.cols.length} < ${n}`] : R`0 < ${n}`,
+          why: F.complex
+            ? R`hacen falta ${n} autovectores independientes para formar las columnas de $P$, pero ${F.info.length ? 'algunas raíces' : 'las raíces'} del polinomio no son reales: en los reales no hay suficientes direcciones que se conserven. <b>No es diagonalizable</b> (en $\mathbb{R}$).`
+            : R`hacen falta ${n} autovectores independientes para las columnas de $P$. Una raíz repetida aporta como mucho tantos como su multiplicidad, y aquí aporta menos: le faltan direcciones. <b>No es diagonalizable</b>: no hay base en la que $A$ solo estire.`,
+        }, { s: 3, eig: F.cols.length });
+      } else {
+        add1({
+          title: '3. ¿Alcanzan? Sí',
+          tex: [...tab, R`${n}\ \text{autovectores independientes}`],
+          why: F.info.every((x) => x.alg === 1)
+            ? R`con ${n} autovalores distintos, los autovectores siempre son independientes: hay justo los ${n} que hacen falta para las columnas de $P$.`
+            : R`la raíz repetida tiene tantos autovectores independientes como su multiplicidad, así que en total hay ${n}: basta para formar $P$.`,
+        }, { s: 3, eig: n });
+        add1({
+          title: '4. Armar P y D',
+          tex: [R`P = ${Ptex()}`, R`D = ${Dtex()}`],
+          why: R`$P$ lleva los autovectores como <b>columnas</b>, y $D$ sus autovalores en la diagonal, <b>en el mismo orden</b> (cada color con su color). En la escena, la rejilla amarilla es la que forman los autovectores: la «cuadrícula natural» de $A$.${F.flipped ? ' (Se cambió el signo de un autovector para que $\\det P > 0$; también es autovector.)' : ''}`,
+        }, { s: 0, eig: n, eg: true });
+        const P = F.P, dP = det(P);
+        add1({
+          title: '5. Calcular P⁻¹',
+          tex: n === 2
+            ? [R`P^{-1} = \frac{1}{${fmt(dP)}}\begin{bmatrix}${fmt(P[1][1])} & ${fmt(-P[0][1])}\\ ${fmt(-P[1][0])} & ${fmt(P[0][0])}\end{bmatrix}`, R`= ${tm(F.Pi)}`]
+            : [R`\det P = ${fmt(dP)} \neq 0`, R`P^{-1} = ${tm(F.Pi)}`],
+          why: R`${n === 2 ? 'con la fórmula de la inversa $2\\times2$ (intercambiar la diagonal, cambiar el signo de la otra, dividir entre el determinante)' : 'con Gauss-Jordan sobre $[P\\,|\\,I]$, como en «Matriz inversa»'}. $P^{-1}$ pasa a <b>coordenadas de autovectores</b>: en la escena, la rejilla amarilla se endereza y cada $\vec v_i$ cae sobre su eje $\vec e_i$.`,
+        }, { s: 1, eig: n, eg: true });
+        add1({
+          title: '6. Comprobar: AP = PD',
+          tex: [R`AP = ${tm(matMul(A, P))}`, R`PD = ${tm(matMul(P, F.Dm()))}`],
+          why: R`es más fácil que comprobar $A = PDP^{-1}$ y dice lo mismo: columna por columna, $A\vec v_i = \lambda_i\vec v_i$. Multiplicando por $P^{-1}$ a la derecha sale $A = PDP^{-1}$. En la escena se completa: $P^{-1}$, luego $D$ (solo estira los ejes) y luego $P$ (vuelve).`,
+        }, { s: 3, eig: n, eg: true });
+        add1({
+          title: '7. Para qué: potencias',
+          tex: [R`A^k = P\,D^k\,P^{-1}`, R`D^k = \begin{bmatrix}${F.lams.map((l, i) => F.lams.map((_, j) => (i === j ? clr(EC[i], `${pf(l)}^k`) : '0')).join('&')).join('\\\\')}\end{bmatrix}`],
+          why: R`al multiplicar $(PDP^{-1})(PDP^{-1})\cdots$, cada $P^{-1}P$ del medio se cancela. Y elevar una diagonal es elevar cada número: calcular $A^{100}$ cuesta lo mismo que $A^2$. Pruébalo en «Explorar», modo «Potencias».`,
+        }, { s: 3, eig: n, eg: true });
+      }
+      stepper.set(steps, st.step);
+      st.step = stepper.i;
+    }
+    const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => st.tab, (key) => {
+      stop(); st.tab = key; tb.refresh(); update();
+      if (key === 'calc') goS(scene[st.step]?.s ?? 3);
+    });
+
     panel.append(
       ...intro('Diagonalización y potencias',
         R`Si $A$ tiene ${n} autovectores independientes, en la base formada por ellos $A$ <b>solo estira cada eje</b>: es una matriz diagonal. Eso se escribe $A = PDP^{-1}$, donde $P$ tiene los autovectores como columnas y $D$ los autovalores en la diagonal. La ganancia: $A^k = PD^kP^{-1}$, y elevar una diagonal es elevar cada número.`),
       card('Matriz A', me.el, pre),
+      tb.el, tb.panes.exp, tb.panes.calc,
+    );
+    tb.panes.calc.append(
+      rich(R`Método: hallar autovalores y autovectores, comprobar que hay ${n} independientes, y ponerlos en $P$ y $D$. La escena sigue cada paso con la animación $P^{-1}$, $D$, $P$.`, 'p', 'note'),
+      stepper.el, stepper.listEl,
+    );
+    tb.panes.exp.append(
       card('Qué ver', mode.el),
       cardS, cardK,
       card('Las piezas', cP.el, nD.el),
@@ -155,7 +242,9 @@ export default {
 
     function update() {
       F = diagonalize(st.A);
-      const pot = st.mode === 'pot';
+      const calc = st.tab === 'calc', pot = st.mode === 'pot' && !calc;
+      buildProc();
+      const sc = calc ? scene[st.step] ?? { eig: n, eg: true } : { eig: n, eg: true };
       if (!pot && !F.ok) st.s = 3;
       const Mt = M(), s = st.s, kk = st.k, kInt = Math.abs(kk - Math.round(kk)) < 1e-6;
       cardS.style.display = pot ? 'none' : '';
@@ -163,12 +252,12 @@ export default {
 
       // --- escena ---
       grid.setMatrix(Mt);
-      egrid.obj.visible = F.ok;
+      egrid.obj.visible = F.ok && sc.eg;
       if (F.ok) egrid.setMatrix(matMul(Mt, F.P));
-      eLines.forEach((l, i) => (F.cols[i] ? l.set(O, matVec(Mt, F.cols[i].v)) : l.setVisible(false)));
+      eLines.forEach((l, i) => (F.cols[i] && i < sc.eig ? l.setVisible(true).set(O, matVec(Mt, F.cols[i].v)) : l.setVisible(false)));
       eArr.forEach((a, i) => {
         const c = F.cols[i];
-        if (!c) return a.setVisible(false);
+        if (!c || i >= sc.eig) return a.setVisible(false);
         a.setVisible(true).set(O, matVec(Mt, c.v));
         const j = i + 1;
         a.setLabel(pot ? (kInt ? (Math.round(kk) === 0 ? R`\vec v_${j}` : R`\lambda_${j}^{${Math.round(kk)}}\vec v_${j}`) : '')
@@ -177,14 +266,14 @@ export default {
       const c = F.ok ? matVec(F.Pi, st.x) : null;
       let acc = O;
       comp.forEach((a, i) => {
-        const vis = !pot && F.ok;
+        const vis = !pot && F.ok && !calc;
         a.setVisible(vis);
         if (!vis) return;
         const nxt = add(acc, matVec(Mt, scale(F.cols[i].v, c[i])));
         a.set(acc, nxt); acc = nxt;
       });
-      xg.setVisible(pot ? kk > 0.02 : s > 0.02 || !F.ok).set(O, st.x);
-      xa.set(O, matVec(Mt, st.x)).setLabel(pot ? (kInt ? (Math.round(kk) === 0 ? R`\vec x` : R`A^{${Math.round(kk)}}\vec x`) : '') : (s > 2.98 || !F.ok ? R`A\vec x` : s < 0.02 ? R`\vec x` : ''));
+      xg.setVisible(!calc && (pot ? kk > 0.02 : s > 0.02 || !F.ok)).set(O, st.x);
+      xa.setVisible(!calc).set(O, matVec(Mt, st.x)).setLabel(pot ? (kInt ? (Math.round(kk) === 0 ? R`\vec x` : R`A^{${Math.round(kk)}}\vec x`) : '') : (s > 2.98 || !F.ok ? R`A\vec x` : s < 0.02 ? R`\vec x` : ''));
       const pts = [];
       dots.forEach((d, j) => {
         const vis = pot && j <= Math.floor(kk + 1e-9);
