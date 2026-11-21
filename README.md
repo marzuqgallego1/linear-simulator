@@ -35,7 +35,7 @@ Luego abre http://localhost:5173 en el navegador (necesita WebGL e internet para
 | 17 | Cambio de base (coordenadas, rotar los ejes, punto de vista) | ✓ | ✓ |
 | 18 | Autovalores y autovectores (direcciones que no giran) | ✓ | ✓ |
 | 19 | Diagonalización y potencias (A = PDP⁻¹, Aᵏ, autovalor dominante) | ✓ | ✓ |
-| 20 | Transformaciones como funciones (fórmulas, paso a paso, ¿es lineal?; operar: composición, suma, k·T, inversa, transpuesta) | ✓ | ✓ |
+| 20 | Transformaciones como funciones (fórmulas, paso a paso, ¿es lineal?; operar: composición, suma, k·T, inversa, transpuesta; analizar: determinante, núcleo, imagen, autovalores) | ✓ | ✓ |
 | 21 | Proyecciones ortogonales (P² = P, Pᵀ = P, complemento ortogonal) | ✓ | ✓ |
 | 22 | Gram-Schmidt (proyecciones, base ortonormal paso a paso) | ✓ | ✓ |
 | 23 | Factorización QR (Gram-Schmidt como matrices: girar tras estirar) | ✓ | ✓ |
@@ -76,6 +76,17 @@ Cierra la sección de matrices. Con T escrita como fórmula (y una segunda funci
 | Transpuesta | la que cumple T(u)·v = u·Tᵀ(v); va de ℝᵐ a ℝⁿ | Aᵀ |
 
 Cada resultado se escribe como fórmula (sin simplificar y simplificada) y se dice si es lineal, afín o no lineal. Cuando una operación no tiene sentido (inversa de una no cuadrada o que aplasta, transpuesta de una no lineal), se explica por qué.
+
+La pestaña **«Analizar T»** lee la transformación desde su fórmula:
+
+| Análisis | Qué se calcula | Qué se ve |
+|----------|----------------|-----------|
+| Determinante | ad − bc con los coeficientes de la fórmula (en ℝ²→ℝ³, factor de área con el producto cruz) | el cuadrado o cubo unidad cambia de área/volumen |
+| Núcleo | igualar cada fórmula a 0 y resolver | la recta o plano rojo se encoge hasta el origen |
+| Imagen | T(x) = x·T(e₁) + y·T(e₂) + …, columnas pivote, teorema del rango | la rejilla cae sobre la recta o plano verde |
+| Autovalores | T(x) = λx → det(A − λI) = 0 → direcciones | las flechas de colores no se salen de sus rectas |
+
+Con una T afín se analiza su parte lineal; con una no lineal se explica por qué no se puede.
 
 ## Estructura
 

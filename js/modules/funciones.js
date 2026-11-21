@@ -1,5 +1,6 @@
 import { Arrow, Polyline, Segments, Dot, C } from '../core/stage.js';
-import { add, sub, scale, norm, dot, matVec, matMul, transpose, inverse, det, fmt, tv, tm, clr, clamp } from '../core/math.js';
+import { add, sub, scale, norm, dot, cross, normalize, matVec, matMul, transpose, inverse, det, solveSystem, eigen, polyTex, fmt, pf, tv, tm, clr, clamp } from '../core/math.js';
+import { LineView, PlaneView } from '../core/geom.js';
 import { R, h, tex, intro, card, details, tryList, vecEditor, slider, button, buttonRow, chips, tabs, TexBox, Note, rich, animate } from '../core/ui.js';
 import { BASIS } from '../core/presets.js';
 import { parse, evalExpr, texExpr, ExprError } from '../core/expr.js';
@@ -63,6 +64,7 @@ const shared = {
   anim: 'coord',
   tab: 'una',
   op: 'comp', order: 'TS', k: 2, so: 1,
+  an: 'det', sa: 1,
   sEx: Object.fromEntries(Object.entries(SPRE).map(([k, l]) => [k, [...l[0][1]]])),
 };
 
@@ -171,6 +173,20 @@ export default {
     const tArr = new Arrow(stage, C.u, { radius: 0.035, opacity: 0.8, label: R`T(\vec x)` });
     const sArr = new Arrow(stage, C.v, { radius: 0.035, opacity: 0.8, label: R`S(\vec x)` });
     const sArr2 = new Arrow(stage, C.v, { radius: 0.025, opacity: 0.35 });
+    // «Analizar T»: núcleo (rojo), imagen (verde) y direcciones propias (colores)
+    const KER = C.x2, IMG = '#51cf66', EIG = [C.u, C.v, '#20c997'];
+    const kerLine = new LineView(stage, KER, { radius: 0.03 });
+    const kerPlane = D === 3 ? new PlaneView(stage, KER, { opacity: 0.16 }) : null;
+    const imgLine = new LineView(stage, IMG, { radius: 0.03 });
+    const imgPlane = D === 3 ? new PlaneView(stage, IMG, { opacity: 0.16 }) : null;
+    const kArr = [0, 1, 2].map((i) => new Arrow(stage, KER, { radius: 0.05, label: R`\vec k_${i + 1}` }));
+    const eigLines = [0, 1, 2].map((i) => new LineView(stage, EIG[i], { radius: 0.02 }));
+    const eigArr = EIG.flatMap((c) => [0, 1].map(() => new Arrow(stage, c, { radius: 0.05, label: ' ' }))); // dos por color (un plano propio)
+    const hideAn = () => {
+      [kerLine, imgLine, ...eigLines].forEach((l) => l.setVisible(false));
+      kerPlane?.setVisible(false); imgPlane?.setVisible(false);
+      [...kArr, ...eigArr].forEach((a) => a.setVisible(false));
+    };
     const oDot = new Dot(stage, C.x2, { radius: 0.11 });
     const xg = new Arrow(stage, C.x, { opacity: 0.4, radius: 0.025, label: R`\vec x` });
     const xa = new Arrow(stage, C.w, { radius: 0.045, label: ' ' });
@@ -226,7 +242,7 @@ export default {
       class: 'chip', onclick: () => {
         ex.forEach((t, i) => { exprs[i] = t; fields[i].inp.value = t; compile(i); });
         refreshAll();
-        if (shared.tab === 'op') runOp(0, 1); else run(0, 1);
+        if (shared.tab === 'op') runOp(0, 1); else if (shared.tab === 'an') runAn(0, 1); else run(0, 1);
       },
     }, name)));
     const animChips = chips([['coord', 'Coordenada por coordenada'], ['todo', 'Todo a la vez'], ['afin', 'Parte lineal, luego traslación']],
@@ -243,8 +259,19 @@ export default {
     const cX = new TexBox(), nX = new Note();
 
     // ---------- pestaña «Operar» ----------
-    const tb = tabs([['una', 'Una función'], ['op', 'Operar']], () => shared.tab, (k) => { stop(); stopOp(); shared.tab = k; tb.refresh(); rebuildS(); update(); if (k === 'op') runOp(0, 1); });
+    const tb = tabs([['una', 'Una función'], ['op', 'Operar'], ['an', 'Analizar T']], () => shared.tab, (k) => {
+      stop(); stopOp(); shared.tab = k; tb.refresh(); rebuildS(); update();
+      if (k === 'op') runOp(0, 1); else if (k === 'an') runAn(0, 1);
+    });
     let stopOp = () => {};
+    // ---------- pestaña «Analizar T» ----------
+    const runAn = (a, b) => { stopOp(); shared.sa = a; update(); stopOp = animate(a, b, 1500, (v) => { shared.sa = v; update(); }); };
+    const anChips = chips([['det', 'Determinante'], ['nuc', 'Núcleo'], ['img', 'Imagen'], ['eig', 'Autovalores']], () => shared.an,
+      (k) => { stopOp(); shared.an = k; update(); runAn(0, 1); });
+    const anDesc = new Note(), anWarn = new Note();
+    const sa = slider({ label: 's', min: 0, max: 1, step: 0.005, get: () => shared.sa, set: (v) => { stopOp(); shared.sa = v; update(); } });
+    const anPhase = new Note();
+    const anBoxes = [0, 1, 2, 3].map(() => new TexBox()), anNote = new Note(), anNote2 = new Note();
     const runOp = (a, b) => { stopOp(); shared.so = a; update(); stopOp = animate(a, b, 1300 * Math.max(1, opStages()), (v) => { shared.so = v; update(); }); };
     const opChips = chips(OPS, () => shared.op, (k) => { stopOp(); shared.op = k; rebuildS(); update(); runOp(0, 1); });
     const opDesc = new Note();
@@ -299,7 +326,7 @@ export default {
       card('Tipo', kindChips.el, rich(D === 2 ? R`$\mathbb{R}^2 \to \mathbb{R}^2$ se ve en la vista 2D; los demás tipos abren la vista 3D.` : R`En 3D, $\mathbb{R}^2$ es el plano $z = 0$. ${n === 3 && m === 2 ? 'La salida cae en ese plano.' : n === 2 ? 'La entrada es ese plano y la salida puede salirse de él.' : ''}`, 'p', 'note')),
       card('La fórmula', h('div', { class: 'expr-box' }, ...fields.map((f) => f.row)), errNote.el, pre, cT.el,
         rich(R`Se puede escribir $2x$, $x\cdot y$, $x^2$, $(x+y)/2$, $\sin(y)$, $\cos$, $\exp$, $\sqrt{\ }$… Las variables son ${vars.map((v) => `$${v}$`).join(', ')}.`, 'p', 'note')),
-      tb.el, tb.panes.una, tb.panes.op,
+      tb.el, tb.panes.una, tb.panes.op, tb.panes.an,
     );
     tb.panes.op.append(
       card('Operación', opChips.el, opDesc.el),
@@ -308,6 +335,11 @@ export default {
       card('Verla', so.el, buttonRow(button('▶ Animar', () => runOp(0, 1), 'primary'), button('↺ Inicio', () => { stopOp(); shared.so = 0; update(); })), opPhase.el),
       card('Con un vector', exOpBox, cOpX.el, nOpX.el),
       details('Lo mismo con matrices', cMat.el, nMat.el, linkRow),
+    );
+    tb.panes.an.append(
+      card('Qué mirar', anChips.el, anDesc.el, anWarn.el),
+      card('Aplicar T', sa.el, buttonRow(button('▶ Animar', () => runAn(0, 1), 'primary'), button('↺ Inicio', () => { stopOp(); shared.sa = 0; update(); })), anPhase.el),
+      card('Cálculo desde la fórmula', ...anBoxes.map((b) => b.el), anNote.el, anNote2.el),
     );
     tb.panes.una.append(
       card('Aplicar poco a poco', animChips.el, ss.el,
@@ -343,7 +375,135 @@ export default {
 
     function update() {
       tArr.setVisible(false); sArr.setVisible(false); sArr2.setVisible(false);
-      if (shared.tab === 'op') updateOp(); else updateUna();
+      hideAn();
+      if (shared.tab === 'op') updateOp(); else if (shared.tab === 'an') updateAn(); else updateUna();
+    }
+
+    // ---------- «Analizar T» ----------
+    function updateAn() {
+      const what = shared.an, s = shared.sa, A = info.A, sq = n === m;
+      [sa, anChips].forEach((c) => c.refresh());
+      anDesc.set('', {
+        det: R`Cuánto agranda o achica $T$ las áreas${n === 3 ? ' y volúmenes' : ''}: mira ${n === 2 ? 'el cuadrado' : 'el cubo'} verde.`,
+        nuc: R`Qué vectores manda $T$ al origen: las soluciones de $T(\vec x) = \vec 0$.`,
+        img: R`Todo lo que $T$ puede producir: hacia dónde cae la rejilla entera.`,
+        eig: R`Las direcciones que $T$ no gira: $T(\vec x) = \lambda\vec x$.`,
+      }[what]);
+      const box = (i, t) => anBoxes[i].set(t ?? '');
+      anBoxes.forEach((b) => b.set(''));
+      anNote.set('', ''); anNote2.set('', '');
+
+      // escena: T aplicada «todo a la vez» con la parte lineal (la traslación no cambia nada de esto)
+      const Tl = A ? (p) => matVec(A, p) : T;
+      const placeA = (p, t) => { const q = Tl(p); return finite(q) ? pad(p, D).map((v, i) => v + (pad(q, D)[i] - v) * t) : null; };
+      setGhost('una', () => toSegs(lines, null));
+      grid.set(segsWith(lines, (p) => placeA(p, s)));
+      boxSeg.set(segsWith(boxLines, (p) => placeA(p, s)));
+      oDot.setVisible(false);
+      eArr.forEach((a, j) => {
+        if (j >= n) return a.setVisible(false);
+        const q = placeA(E[j], s);
+        a.setVisible(!!q);
+        if (q) a.set(pad(O, D), q).setLabel(s < 0.01 ? R`\vec e_${j + 1}` : s > 0.99 ? R`T(\vec e_${j + 1})` : '');
+      });
+      const x = shared.x[n];
+      xg.set(pad(O, D), pad(x, D));
+      const qx = placeA(x, s);
+      xa.setVisible(!!qx && what === 'eig');
+      xg.setVisible(what === 'eig');
+      if (qx) xa.set(pad(O, D), qx).setLabel(s > 0.99 ? R`T(\vec x)` : '');
+      anPhase.set(s > 0.995 ? 'pos' : '', s < 0.005 ? R`Antes de aplicar $T$.` : s > 0.995 ? R`Después de aplicar $T$.` : R`Aplicando $T$…`);
+
+      if (!A) {
+        anWarn.set('neg', R`<b>$T$ no es lineal</b>, así que no tiene matriz y estas herramientas no se aplican tal cual: una función no lineal estira de forma distinta en cada zona. (En cálculo se analiza por zonas con la matriz de derivadas, la <i>jacobiana</i>.)`);
+        xg.setVisible(true);
+        return;
+      }
+      anWarn.set(info.type === 'afin' ? 'zero' : '', info.type === 'afin' ? R`$T$ es afín: se analiza su parte lineal $A\vec x$. La traslación $\vec b = ${tv(info.T0)}$ mueve todo sin deformarlo, así que no cambia áreas, núcleo ni direcciones.` : '');
+      const rows = affTex(A, null, vars);
+
+      if (what === 'det') {
+        if (sq) {
+          const d = det(A);
+          if (n === 2) {
+            const [[a, b], [c, dd]] = A;
+            box(0, R`\begin{gathered}${OUT[0]} = ${clr(C.u, fmt(a))}x ${b < 0 ? '-' : '+'} ${clr(C.u, fmt(Math.abs(b)))}y \\ ${OUT[1]} = ${clr(C.v, fmt(c))}x ${dd < 0 ? '-' : '+'} ${clr(C.v, fmt(Math.abs(dd)))}y\end{gathered}`);
+            box(1, R`\det A = ad - bc = ${pf(a)}\cdot${pf(dd)} - ${pf(b)}\cdot${pf(c)} = ${clr(C.w, fmt(d))}`);
+          } else {
+            box(0, R`A = ${tm(A)}`);
+            box(1, R`\det A = ${clr(C.w, fmt(d))}`);
+          }
+          const unit = n === 2 ? 'área' : 'volumen', fig = n === 2 ? 'el cuadrado unidad' : 'el cubo unidad';
+          anNote.set(Math.abs(d) < 1e-9 ? 'neg' : 'pos', Math.abs(d) < 1e-9
+            ? R`$\det A = 0$: ${fig} queda <b>aplastado</b> (${unit} 0). $T$ pierde una dimensión: no tiene inversa y su núcleo no es solo $\vec 0$.`
+            : R`${fig.charAt(0).toUpperCase() + fig.slice(1)} (${unit} 1) se convierte en un ${n === 2 ? 'paralelogramo' : 'paralelepípedo'} de ${unit} $|\det A| = ${fmt(Math.abs(d))}$. <b>Toda</b> figura cambia su ${unit} por ese mismo factor, porque $T$ estira igual en todas partes.${d < 0 ? ' El signo negativo dice que además <b>voltea</b> la orientación (como un espejo).' : ''}`);
+          anNote2.set('', n === 2 ? R`Los números salen directo de la fórmula: $a, b$ son los coeficientes de $${OUT[0]}$ y $c, d$ los de $${OUT[1]}$.` : R`Se calcula por cofactores o escalonando (ver «Determinante»).`);
+        } else if (n === 2) {
+          const c1 = A.map((r) => r[0]), c2 = A.map((r) => r[1]), w = cross(c1, c2);
+          box(0, R`T(\vec e_1) = ${tv(c1)},\quad T(\vec e_2) = ${tv(c2)}`);
+          box(1, R`\|T(\vec e_1)\times T(\vec e_2)\| = \|${tv(w)}\| = ${clr(C.w, fmt(norm(w)))}`);
+          anNote.set('zero', R`$T$ va de $\mathbb{R}^2$ a $\mathbb{R}^3$: la matriz es de 3×2 y <b>no tiene determinante</b>. Pero el cuadrado unidad sí se convierte en un paralelogramo dentro de $\mathbb{R}^3$, y su área se mide con el producto cruz: <b>factor de área</b> ${fmt(norm(w))}.${norm(w) < 1e-9 ? ' Es 0: el plano se aplasta a una recta.' : ''}`);
+          anNote2.set('', R`Ese factor también es $\sqrt{\det(A^{\mathsf T}A)} = \sqrt{${fmt(det(matMul(transpose(A), A)))}}$.`);
+        } else {
+          box(0, R`A = ${tm(A)}\quad (2\times3)`);
+          anNote.set('zero', R`$T$ va de $\mathbb{R}^3$ a $\mathbb{R}^2$: <b>no tiene determinante</b> (la matriz no es cuadrada). Todo el espacio cae en un plano, así que cualquier volumen termina en 0: siempre se pierde al menos una dimensión (mira el núcleo).`);
+        }
+        return;
+      }
+
+      const S0 = solveSystem(A, Array(m).fill(0)), ker = S0.nullBasis, r = S0.rank;
+      const eqs = R`\begin{cases}${rows.map((t) => `${t} = 0`).join('\\\\')}\end{cases}`;
+      if (what === 'nuc') {
+        box(0, R`T(\vec x) = \vec 0:\quad ${eqs}`);
+        if (!ker.length) {
+          box(1, R`\text{solución única: } \vec x = \vec 0`);
+          anNote.set('pos', R`Solo el origen va a parar al origen: el núcleo es $\{\vec 0\}$ (dimensión 0). $T$ no aplasta nada${sq ? ' y tiene inversa' : ''}: puntos distintos van a sitios distintos.`);
+        } else {
+          box(1, R`\text{libres: } ${S0.free.map((f) => vars[f]).join(', ')}`);
+          box(2, R`\vec x = ${S0.free.map((f, i) => `${vars[f]}\\,${clr(KER, tv(ker[i]))}`).join(' + ')}`);
+          anNote.set('neg', R`El núcleo es ${ker.length === 1 ? 'una <b>recta</b>' : ker.length === 2 ? 'un <b>plano</b>' : 'todo el espacio'} (dimensión ${ker.length}), en rojo. Al animar, las flechas rojas se encogen hasta el origen: ${ker.length === 1 ? 'toda esa recta' : 'todo ese plano'} se pierde. Consecuencia: puntos que difieren en un vector del núcleo van a parar <b>al mismo sitio</b>.`);
+          anNote2.set('', R`Se resuelve como cualquier sistema: igualando cada fórmula a 0 y escalonando (ver «Rango, núcleo y nulidad»).`);
+          if (ker.length === 1) kerLine.setVisible(true).set(pad(O, D), pad(ker[0], D));
+          else if (ker.length === 2 && D === 3) kerPlane.setVisible(true).set([0, 0, 0], cross(pad(ker[0], 3), pad(ker[1], 3)));
+          ker.forEach((k, i) => { const q = placeA(k, s); if (q) kArr[i].setVisible(true).set(pad(O, D), q); });
+        }
+        return;
+      }
+      if (what === 'img') {
+        const cols = E.map((e) => A.map((row) => matVec([row], e)[0]));
+        box(0, R`T(${vars.join(', ')}) = ${vars.map((v, j) => `${v}\\,${tv(cols[j])}`).join(' + ')}`);
+        box(1, r ? R`\text{Im}\,T = \text{span}\left\{${S0.pivots.map((j) => clr(IMG, tv(cols[j]))).join(',\\ ')}\right\}` : R`\text{Im}\,T = \{\vec 0\}`);
+        box(2, R`\underbrace{${r}}_{\dim \text{Im}} + \underbrace{${ker.length}}_{\dim \text{Ker}} = ${n}`);
+        const where = r === m ? (m === 2 ? 'todo el plano' : 'todo el espacio') : r === 2 ? 'un <b>plano</b>' : r === 1 ? 'una <b>recta</b>' : 'solo el origen';
+        anNote.set(r === m ? 'pos' : 'zero', R`Separando cada variable, $T(\vec x)$ es una <b>combinación de las columnas</b> $T(\vec e_j)$. Lo que puede producir es todo lo que esas columnas generan: ${where} (dimensión ${r}, el <b>rango</b>).${r < m ? ` Los puntos fuera de ${r === 1 ? 'esa recta' : 'ese plano'} (en verde) no son $T$ de nada: $T(\\vec x) = \\vec b$ no tiene solución para ellos.` : ''}${r < n ? ' Las columnas que sobran son combinación de las otras.' : ''}`);
+        anNote2.set('', R`<b>Teorema del rango:</b> cada dimensión de la entrada o sobrevive (imagen) o se pierde (núcleo): ${r} + ${ker.length} = ${n}.`);
+        const ic = S0.pivots.map((j) => cols[j]);
+        if (r === 1) imgLine.setVisible(s > 0.5).set(pad(O, D), pad(ic[0], D));
+        else if (r === 2 && m === 3) imgPlane.setVisible(s > 0.5).set([0, 0, 0], cross(ic[0], ic[1]));
+        return;
+      }
+      // autovalores
+      if (!sq) {
+        anNote.set('zero', R`Los autovalores solo tienen sentido si $T$ va de un espacio a <b>sí mismo</b> ($\mathbb{R}^2 \to \mathbb{R}^2$ o $\mathbb{R}^3 \to \mathbb{R}^3$): aquí $T(\vec x)$ y $\vec x$ viven en espacios distintos y no se puede pedir que $T(\vec x) = \lambda\vec x$.`);
+        return;
+      }
+      const Ev = eigen(A), pA = n === 2 ? Ev.poly : Ev.poly.map((c) => -c);
+      box(0, R`T(\vec x) = \lambda\vec x:\quad \begin{cases}${rows.map((t, i) => `${t} = \\lambda ${vars[i]}`).join('\\\\')}\end{cases}`);
+      box(1, R`\det(A - \lambda I) = ${polyTex(pA)} = 0`);
+      if (!Ev.values.length) {
+        anNote.set('neg', R`El polinomio no tiene raíces reales: <b>ninguna dirección se conserva</b>, todo gira. Al animar, ninguna recta por el origen se queda en su sitio.`);
+        return;
+      }
+      box(2, Ev.values.map(({ lambda }, i) => clr(EIG[i], R`\lambda_${i + 1} = ${fmt(lambda)}`)).join(R`,\ `));
+      box(3, R`\begin{gathered}${Ev.values.map(({ lambda, vectors }, i) => R`\lambda = ${fmt(lambda)}:\ ${vectors.map((v) => clr(EIG[i], tv(v))).join(',\\ ')}`).join(' \\\\[4pt] ')}\end{gathered}`);
+      const total = Ev.values.reduce((a, v) => a + v.vectors.length, 0);
+      anNote.set('pos', R`Pasando todo a un lado, $T(\vec x) = \lambda\vec x$ es $(A - \lambda I)\vec x = \vec 0$, que solo tiene soluciones no nulas si $\det(A - \lambda I) = 0$. Al animar, las flechas de colores <b>no se salen de sus rectas</b>: solo se estiran por su $\lambda$.${total < n ? ` Solo hay ${total} dirección${total === 1 ? '' : 'es'} propia${total === 1 ? '' : 's'} independiente${total === 1 ? '' : 's'}: no alcanzan para una base (no es diagonalizable).` : ''}`);
+      anNote2.set('', R`Mueve $\vec x$ (cian) hasta una recta de color: $T(\vec x)$ queda sobre ella.`);
+      Ev.values.forEach(({ lambda, vectors }, i) => vectors.slice(0, 2).forEach((v, q) => {
+        if (vectors.length === 1) eigLines[i].setVisible(true).set(pad(O, D), pad(v, D));
+        const p = placeA(scale(normalize(v), 1.5), s);
+        if (p) eigArr[2 * i + q].setVisible(true).set(pad(O, D), p).setLabel(q ? '' : s > 0.99 ? R`${fmt(lambda)}\,\vec v_${i + 1}` : R`\vec v_${i + 1}`);
+      }));
     }
 
     // ---------- modelo de cada operación ----------
