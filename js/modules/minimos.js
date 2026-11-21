@@ -1,13 +1,13 @@
 import { Arrow, Polyline, Quad, Dot, Rod, C, setLabel } from '../core/stage.js';
 import { sub, dot, norm, cross, matVec, fmt, pf, tv, tm, clr, EPS } from '../core/math.js';
-import { R, h, intro, card, details, tryList, vecEditor, slider, button, buttonRow, chips, TexBox, Note, rich } from '../core/ui.js';
+import { R, h, intro, card, details, tryList, vecEditor, slider, button, buttonRow, chips, TexBox, Note, rich, tabs, Stepper } from '../core/ui.js';
 import { LineView, PlaneView } from '../core/geom.js';
 import { BASIS } from '../core/presets.js';
 
 const MAXP = 10;
 const state = {
-  2: { pts: [[-3, -1.5], [-1.5, 0], [0, 0.5], [1.5, 2.5], [3, 2.5]], mine: { m: 0.3, b: 1 }, squares: true, which: 'best' },
-  3: { pts: [[0, 1], [1, 1], [2, 3]] },
+  2: { pts: [[-3, -1.5], [-1.5, 0], [0, 0.5], [1.5, 2.5], [3, 2.5]], mine: { m: 0.3, b: 1 }, squares: true, which: 'best', tab: 'exp', step: 0 },
+  3: { pts: [[0, 1], [1, 1], [2, 3]], tab: 'exp', step: 0 },
 };
 
 /** Recta de mínimos cuadrados y = m·x + b por las ecuaciones normales. */
@@ -25,6 +25,58 @@ const lineTex = (m, b) => {
   const bs = fmt(b);
   return `y = ${fmt(m)}x ${bs.startsWith('-') ? '-' : '+'} ${bs.replace('-', '')}`;
 };
+
+/** Pasos del procedimiento (ecuaciones normales). Cada paso lleva show: si la escena muestra ya la solución. */
+function lsqSteps(pts, geo3) {
+  const N = pts.length, F = fit(pts);
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const A = pts.map((p) => [p[0], 1]);
+  const [[sxx, sx], [, nn]] = F.AtA, [sxy, sy] = F.Atb;
+  const steps = [{
+    title: 'Plantear: un sistema sin solución',
+    tex: [R`m x_i + b = y_i\quad (i = 1, \dots, ${N})`, R`${tm(A)}\begin{bmatrix}m\\b\end{bmatrix} = ${tv(ys)}`],
+    why: R`cada punto pide que la recta pase por él: ${N} ecuaciones y solo 2 incógnitas. Salvo que los puntos estén alineados, no hay solución. ${geo3 ? R`En la escena: las columnas de $A$ generan el plano gris y $\vec y$ está fuera de él, así que ninguna combinación $A\vec c$ llega a $\vec y$.` : 'En la escena solo están los datos: ninguna recta pasa por todos.'}`,
+    show: false,
+  }, {
+    title: 'La idea: el error debe ser perpendicular',
+    tex: [R`\vec a_1\cdot(\vec y - A\hat c) = 0,\quad \vec a_2\cdot(\vec y - A\hat c) = 0`, R`\Rightarrow\ A^{\mathsf T}(\vec y - A\hat c) = \vec 0`, R`\Rightarrow\ A^{\mathsf T}A\,\hat c = A^{\mathsf T}\vec y`],
+    why: geo3
+      ? R`el punto del plano más cercano a $\vec y$ es el pie de la perpendicular: la <b>proyección</b> $A\hat c$ (amarillo). Ahí el error $\vec e = \vec y - A\hat c$ (rosa) forma ángulo recto con el plano, es decir, con cada columna. Las filas de $A^{\mathsf T}$ son las columnas de $A$, así que las dos condiciones juntas son $A^{\mathsf T}\vec e = \vec 0$: las <b>ecuaciones normales</b> («normal» = perpendicular).`
+      : R`el vector de residuos $\vec e = \vec y - A\hat c$ vive en $\mathbb{R}^{${N}}$ y no se puede dibujar, pero la idea es la de la vista 3D: el error más pequeño es el perpendicular a las columnas de $A$. En el dibujo eso se ve así: con $\vec a_2 = (1, \dots, 1)$, la condición dice que <b>los residuos suman 0</b> (lo que sobra arriba compensa lo que falta abajo), y por eso la recta pasa por el <b>centro de los datos</b> $(\bar x, \bar y)$ (punto amarillo).`,
+    show: true,
+  }, {
+    title: 'Calcular AᵀA y Aᵀy',
+    tex: [R`A^{\mathsf T}A = \begin{bmatrix}\sum x_i^2 & \sum x_i\\ \sum x_i & ${N}\end{bmatrix} = ${tm(F.AtA)}`, R`A^{\mathsf T}\vec y = \begin{bmatrix}\sum x_iy_i\\ \sum y_i\end{bmatrix} = ${tv(F.Atb)}`],
+    why: R`cada entrada de $A^{\mathsf T}A$ es un producto punto entre columnas de $A$: $\vec a_1\cdot\vec a_1 = \sum x_i^2$, $\vec a_1\cdot\vec a_2 = \sum x_i$, $\vec a_2\cdot\vec a_2 = ${N}$. Y $A^{\mathsf T}\vec y$ son los productos punto de cada columna con $\vec y$. Sin importar cuántos datos haya, queda un sistema de <b>2×2</b>.`,
+    show: true,
+  }];
+  const D = sxx * nn - sx * sx;
+  if (!F.ok) {
+    steps.push({
+      title: 'Resolver: AᵀA no es invertible',
+      tex: R`\det(A^{\mathsf T}A) = ${fmt(sxx)}\cdot${fmt(nn)} - ${pf(sx)}^2 = 0`,
+      why: R`todas las $x_i$ son iguales: las dos columnas de $A$ son paralelas${geo3 ? ' (no generan un plano)' : ''} y el sistema 2×2 no tiene solución única. Haría falta una recta vertical, que no es de la forma $y = mx + b$.`,
+      show: false,
+    });
+    return steps;
+  }
+  steps.push({
+    title: 'Resolver el sistema 2×2',
+    tex: [R`${tm(F.AtA)}\begin{bmatrix}m\\b\end{bmatrix} = ${tv(F.Atb)}`, R`\det = ${fmt(sxx)}\cdot${fmt(nn)} - ${pf(sx)}^2 = ${fmt(D)}`,
+      R`m = \frac{${fmt(nn)}\cdot${pf(sxy)} - ${pf(sx)}\cdot${pf(sy)}}{${fmt(D)}} = ${clr(C.w, fmt(F.m))}`, R`b = \frac{${fmt(sxx)}\cdot${pf(sy)} - ${pf(sx)}\cdot${pf(sxy)}}{${fmt(D)}} = ${clr(C.w, fmt(F.b))}`],
+    why: R`es un sistema 2×2 normal; aquí con la regla de Cramer (cada incógnita es un cociente de determinantes). $\det(A^{\mathsf T}A) \neq 0$ siempre que haya al menos dos $x_i$ distintas.`,
+    show: true,
+  });
+  const e = ys.map((y, i) => y - (F.m * xs[i] + F.b));
+  steps.push({
+    title: 'Resultado y comprobación',
+    tex: [R`${clr(C.w, lineTex(F.m, F.b))}`, R`\vec e = \vec y - A\hat c = ${clr(C.x2, tv(e))}`,
+      R`\textstyle\sum e_i = ${fmt(e.reduce((a, b) => a + b, 0))},\quad \sum x_ie_i = ${fmt(e.reduce((a, b, i) => a + b * xs[i], 0))}`, R`\|\vec e\|^2 = ${fmt(sse(pts, F.m, F.b), 3)}`],
+    why: R`los residuos cumplen las dos condiciones de perpendicularidad ($A^{\mathsf T}\vec e = \vec 0$). Su suma de cuadrados es el error mínimo: cualquier otra recta da más${geo3 ? R`; en la escena, cualquier otro punto del plano está más lejos de $\vec y$` : R` (compruébalo con «Tu recta» en Explorar)`}.`,
+    show: true,
+  });
+  return steps;
+}
 
 export default {
   id: 'minimos',
@@ -44,6 +96,10 @@ function mount2({ stage, panel }) {
   const myLine = new LineView(stage, '#adb5bd', { radius: 0.025 });
   const resid = Array.from({ length: MAXP }, () => new Polyline(stage, C.x2, { opacity: 0.9 }));
   const sq = Array.from({ length: MAXP }, () => new Quad(stage, C.x2, { opacity: 0.18, edgeOpacity: 0.5 }));
+  const cen = new Dot(stage, C.w, { radius: 0.11 });
+  let steps = [];
+  const stepper = new Stepper((i) => { s.step = i; update(); });
+  const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => s.tab, (k) => { s.tab = k; tb.refresh(); update(); });
   for (let i = 0; i < MAXP; i++) {
     stage.addHandle({
       color: C.x, visible: () => i < s.pts.length, get: () => s.pts[i] ?? [0, 0],
@@ -68,6 +124,13 @@ function mount2({ stage, panel }) {
     ...intro('Mínimos cuadrados',
       R`Con muchos datos casi nunca hay una recta que pase por <b>todos</b> los puntos: el sistema no tiene solución. Mínimos cuadrados busca la recta que se equivoca <b>lo menos posible</b>, midiendo el error como la suma de los cuadrados de las distancias verticales (los <b>residuos</b>).`),
     card('Datos', rich('Arrastra los puntos cian.', 'p'), buttonRow(button('+ Punto', add), button('− Punto', remove))),
+    tb.el, tb.panes.exp, tb.panes.calc,
+  );
+  tb.panes.calc.append(
+    rich(R`Método: las <b>ecuaciones normales</b> $A^{\mathsf T}A\,\hat c = A^{\mathsf T}\vec y$. Mueve los puntos y los números de cada paso se recalculan.`, 'p', 'note'),
+    stepper.el, stepper.listEl,
+  );
+  tb.panes.exp.append(
     card('Qué recta mirar', which.el, sqToggle.el, rich('Mueve tu recta y compara su error con el de la mejor:', 'p'), sm.el, sb.el,
       buttonRow(button('Copiar la mejor recta', () => { const F = fit(s.pts); if (F.ok) { s.mine = { m: F.m, b: F.b }; update(); } })), cmp.el),
     card('Ecuaciones normales', rich(R`Queremos $y_i \approx m x_i + b$ para todos los puntos: $A\vec c \approx \vec y$ con $A$ = [columna de $x_i$, columna de unos]. La mejor solución cumple $A^TA\,\vec c = A^T\vec y$:`),
@@ -85,16 +148,23 @@ function mount2({ stage, panel }) {
 
   function update() {
     const F = fit(s.pts);
-    bestLine.setVisible(F.ok);
+    const calc = s.tab === 'calc';
+    steps = lsqSteps(s.pts, false);
+    stepper.set(steps, s.step);
+    s.step = stepper.i;
+    const show = !calc || steps[s.step].show;
     if (F.ok) bestLine.set([0, F.b], [1, F.m]);
-    myLine.setVisible(s.which === 'mine').set([0, s.mine.b], [1, s.mine.m]);
-    const use = s.which === 'mine' ? s.mine : F.ok ? F : null;
+    bestLine.setVisible(F.ok && show);
+    myLine.set([0, s.mine.b], [1, s.mine.m]).setVisible(s.which === 'mine' && !calc);
+    const use = calc ? (F.ok && show ? F : null) : s.which === 'mine' ? s.mine : F.ok ? F : null;
+    const N = s.pts.length;
+    cen.setVisible(calc && F.ok && s.step >= 1).set([s.pts.reduce((a, p) => a + p[0], 0) / N, s.pts.reduce((a, p) => a + p[1], 0) / N]);
 
     for (let i = 0; i < MAXP; i++) {
       const p = s.pts[i];
       const vis = !!p && !!use;
       resid[i].setVisible(vis);
-      sq[i].setVisible(vis && s.squares);
+      sq[i].setVisible(vis && s.squares && !calc);
       if (!vis) continue;
       const yl = use.m * p[0] + use.b, e = p[1] - yl;
       resid[i].set([p, [p[0], yl]]);
@@ -140,6 +210,8 @@ function mount3({ stage, panel }) {
   const err = new Rod(stage, C.x2, { radius: 0.03 });
   const foot = new Dot(stage, C.w, { radius: 0.08 });
   const badge = stage.addLabel('', C.x2, 'badge');
+  const stepper = new Stepper((i) => { s.step = i; update(); });
+  const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => s.tab, (k) => { s.tab = k; tb.refresh(); update(); });
   stage.addHandle({ color: C.x, get: yv, set: (p) => { s.pts = s.pts.map((q, i) => [q[0], p[i]]); update(); } });
 
   const eds = s.pts.map((_, i) => vecEditor({
@@ -152,6 +224,13 @@ function mount3({ stage, panel }) {
     ...intro('Mínimos cuadrados: la geometría',
       R`Con 3 datos $(x_i, y_i)$, ajustar $y = mx + b$ es el sistema $A\vec c = \vec y$ de 3 ecuaciones y 2 incógnitas. Las columnas de $A$ son $\vec x = (x_1, x_2, x_3)$ y $\vec 1 = (1, 1, 1)$, dos vectores de $\mathbb{R}^3$: solo generan un <b>plano</b>. Si $\vec y$ no está en ese plano, no hay solución exacta.`),
     card('Los 3 datos', h('div', { class: 'row' }, eds.map((e) => e.el)), rich(R`También puedes arrastrar la punta de $\vec y$ (cian): cambia los tres $y_i$ a la vez.`, 'p')),
+    tb.el, tb.panes.exp, tb.panes.calc,
+  );
+  tb.panes.calc.append(
+    rich(R`Método: las <b>ecuaciones normales</b> $A^{\mathsf T}A\,\hat c = A^{\mathsf T}\vec y$. Aquí se ve de dónde salen: el error tiene que ser perpendicular al plano de las columnas.`, 'p', 'note'),
+    stepper.el, stepper.listEl,
+  );
+  tb.panes.exp.append(
     card('Lo que estás viendo', cSys.el, note.el, cProj.el, cPerp.el),
     details('Por qué salen las ecuaciones normales',
       rich(R`El punto del plano más cercano a $\vec y$ es su <b>proyección</b> $A\hat c$. El error $\vec e = \vec y - A\hat c$ es perpendicular al plano, así que es perpendicular a cada columna: $\vec a_1\cdot\vec e = 0$ y $\vec a_2\cdot\vec e = 0$.`),
@@ -166,6 +245,10 @@ function mount3({ stage, panel }) {
   function update() {
     const [x, one] = cols(), y = yv();
     const F = fit(s.pts);
+    const steps = lsqSteps(s.pts, true);
+    stepper.set(steps, s.step);
+    s.step = stepper.i;
+    const show = s.tab !== 'calc' || steps[s.step].show;
     a1.set(O, x);
     a2.set(O, one);
     bA.set(O, y);
@@ -181,10 +264,10 @@ function mount3({ stage, panel }) {
     plane.setVisible(true).set(O, nrm);
     const p = matVec(s.pts.map((q) => [q[0], 1]), [F.m, F.b]);
     const e = sub(y, p);
-    pA.setVisible(true).set(O, p);
-    foot.setVisible(true).set(p);
-    err.setVisible(norm(e) > 1e-6).set(p, y);
-    badge.visible = norm(e) > 1e-6;
+    pA.setVisible(show).set(O, p);
+    foot.setVisible(show).set(p);
+    err.setVisible(show && norm(e) > 1e-6).set(p, y);
+    badge.visible = show && norm(e) > 1e-6;
     badge.position.set(...p.map((v, i) => (v + y[i]) / 2));
     setLabel(badge, R`\|\vec e\| = ${fmt(norm(e))}`);
 
