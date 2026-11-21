@@ -202,3 +202,25 @@ input.expr {
 }
 input.expr:focus { outline: none; border-color: var(--accent); }
 input.expr.bad { border-color: #ff6b6b; }
+
+/* Pestañas «Explorar» / «Cómo se calcula» */
+.tabs { display: flex; gap: 4px; margin: 4px 0 14px; border-bottom: 1px solid var(--border); }
+.tabs .tab {
+  background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 8px 12px; color: var(--muted); font-weight: 600;
+}
+.tabs .tab:hover { color: var(--text); background: transparent; }
+.tabs .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+/* Procedimiento paso a paso */
+.stepper .step-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stepper .step-count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.stepper .step-title { margin: 12px 0 6px; font-size: 15px; }
+.step-why {
+  margin-top: 10px; padding: 8px 10px; border-left: 3px solid var(--accent);
+  background: #1a2030; border-radius: 0 6px 6px 0; color: #c9cfdb;
+}
+.step-list { margin: 0; padding-left: 22px; }
+.step-list li { padding: 3px 4px; border-radius: 4px; cursor: pointer; color: var(--muted); }
+.step-list li:hover { color: var(--text); }
+.step-list li.active { color: var(--text); background: #1d2433; }

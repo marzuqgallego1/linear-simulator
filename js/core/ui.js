@@ -146,3 +146,69 @@ export function animate(from, to, ms, step) {
   requestAnimationFrame(tick);
   return () => { cancelled = true; };
 }
+
+// ---------- Pestañas y procedimientos paso a paso ----------
+
+/** Pestañas «Explorar» / «Cómo se calcula». Devuelve la barra y un contenedor por pestaña. */
+export function tabs(options, get, set) {
+  const btns = options.map(([key, label]) => h('button', { class: 'tab', onclick: () => set(key) }, label));
+  const panes = Object.fromEntries(options.map(([key]) => [key, h('div', { class: 'tab-pane' })]));
+  const refresh = () => {
+    btns.forEach((b, i) => b.classList.toggle('active', options[i][0] === get()));
+    for (const [k, el] of Object.entries(panes)) el.style.display = k === get() ? '' : 'none';
+  };
+  refresh();
+  return { el: h('div', { class: 'tabs' }, btns), panes, refresh };
+}
+
+/**
+ * Procedimiento paso a paso. Cada paso: { title, text?, tex?: string | string[], why?, note?: [tipo, texto] }.
+ * onChange(i, desde) se llama al cambiar de paso (para sincronizar la escena).
+ */
+export class Stepper {
+  constructor(onChange) {
+    this.i = 0;
+    this.steps = [];
+    this.onChange = onChange;
+    this.key = null;
+    this.prev = button('◀ Anterior', () => this.go(this.i - 1));
+    this.next = button('Siguiente ▶', () => this.go(this.i + 1), 'primary');
+    this.count = h('span', { class: 'step-count' });
+    this.title = h('h4', { class: 'step-title' });
+    this.body = h('div', { class: 'step-body' });
+    this.list = h('ol', { class: 'step-list' });
+    this.el = h('section', { class: 'card stepper' }, h('div', { class: 'step-nav' }, this.prev, this.count, this.next), this.title, this.body);
+    this.listEl = card('Todos los pasos', this.list);
+  }
+  set(steps, index = this.i) {
+    this.steps = steps;
+    this.i = Math.max(0, Math.min(index, steps.length - 1));
+    this.render();
+  }
+  go(i) {
+    if (i < 0 || i >= this.steps.length || i === this.i) return;
+    const from = this.i;
+    this.i = i;
+    this.render();
+    this.onChange?.(i, from);
+  }
+  render() {
+    const s = this.steps[this.i];
+    if (!s) return;
+    const key = JSON.stringify([this.i, this.steps.map((x) => x.title), s]);
+    if (key === this.key) return;
+    this.key = key;
+    this.count.textContent = `Paso ${this.i + 1} de ${this.steps.length}`;
+    this.prev.disabled = this.i === 0;
+    this.next.disabled = this.i === this.steps.length - 1;
+    setRich(this.title, s.title);
+    const kids = [];
+    if (s.text) kids.push(rich(s.text));
+    for (const t of [].concat(s.tex ?? [])) { const b = new TexBox(); b.set(t); kids.push(b.el); }
+    if (s.note) { const n = new Note(); n.set(...s.note); kids.push(n.el); }
+    if (s.why) kids.push(setRich(h('div', { class: 'step-why' }), `<b>Por qué:</b> ${s.why}`));
+    this.body.replaceChildren(...kids);
+    this.list.replaceChildren(...this.steps.map((x, k) =>
+      setRich(h('li', { class: k === this.i ? 'active' : '', onclick: () => this.go(k) }), x.title)));
+  }
+}
