@@ -188,7 +188,7 @@ export default {
       [...kArr, ...eigArr].forEach((a) => a.setVisible(false));
     };
     const oDot = new Dot(stage, C.x2, { radius: 0.11 });
-    const xg = new Arrow(stage, C.x, { opacity: 0.4, radius: 0.025, label: R`\vec x` });
+    const xg = new Arrow(stage, C.x, { radius: 0.035, label: R`\vec x` });
     const xa = new Arrow(stage, C.w, { radius: 0.045, label: ' ' });
     const toSegs = (pls, s) => {
       const out = [];
@@ -376,6 +376,7 @@ export default {
     function update() {
       tArr.setVisible(false); sArr.setVisible(false); sArr2.setVisible(false);
       hideAn();
+      xg.setVisible(true); // «Analizar T» lo oculta en algunos análisis; las demás vistas siempre lo muestran
       if (shared.tab === 'op') updateOp(); else if (shared.tab === 'an') updateAn(); else updateUna();
     }
 
@@ -409,7 +410,7 @@ export default {
       const x = shared.x[n];
       xg.set(pad(O, D), pad(x, D));
       const qx = placeA(x, s);
-      xa.setVisible(!!qx && what === 'eig');
+      xa.setVisible(!!qx && s > 0.005 && what === 'eig');
       xg.setVisible(what === 'eig');
       if (qx) xa.set(pad(O, D), qx).setLabel(s > 0.99 ? R`T(\vec x)` : '');
       anPhase.set(s > 0.995 ? 'pos' : '', s < 0.005 ? R`Antes de aplicar $T$.` : s > 0.995 ? R`Después de aplicar $T$.` : R`Aplicando $T$…`);
@@ -602,7 +603,7 @@ export default {
       const x = shared.x[d0];
       xg.set(pad(G.O, D), pad(x, D));
       const qx = placeOp(x, s);
-      xa.setVisible(!!qx);
+      xa.setVisible(!!qx && s > 0.005);
       if (qx) xa.set(pad(G.O, D), qx).setLabel(s > 0.99 && Mo.ok ? R`${fa}(\vec x)` : '');
       if (op === 'suma' && Mo.ok) {
         const tx = T(x), sx = Sf(x);
@@ -721,7 +722,7 @@ export default {
       });
       xg.set(pad(O, D), pad(x, D));
       const qx = place(x, s);
-      xa.setVisible(!!qx);
+      xa.setVisible(!!qx && s > 0.005);
       if (qx) xa.set(pad(O, D), qx).setLabel(s > 0.99 ? R`T(\vec x)` : '');
       [ss, ex, animChips, kindChips].forEach((c) => c.refresh());
       animChips.el.children[2].disabled = !info.A || info.type === 'lineal';
