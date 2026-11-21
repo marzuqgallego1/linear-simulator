@@ -1,6 +1,6 @@
 import { Arrow, Lattice, Polyline, Segments, Rod, Dot, C } from '../core/stage.js';
-import { identity, matVec, transpose, symEigen, rotPow, det, dot, scale, add, normalize, fmt, tv, tm, clr } from '../core/math.js';
-import { R, h, intro, card, details, tryList, vecEditor, matEditor, slider, button, buttonRow, chips, TexBox, Note, rich, animate } from '../core/ui.js';
+import { identity, lerpMat, matVec, transpose, symEigen, rotPow, det, dot, scale, add, normalize, fmt, tv, tm, clr } from '../core/math.js';
+import { R, h, intro, card, details, tryList, vecEditor, matEditor, slider, button, buttonRow, chips, TexBox, Note, rich, animate, tabs, Stepper } from '../core/ui.js';
 import { LineView } from '../core/geom.js';
 
 const EC = [C.u, C.v, '#20c997']; // direcciones principales (autovectores)
@@ -26,9 +26,26 @@ const P3 = [
 ];
 
 const state = {
-  2: { A: P2[2][1], x: [1.5, 0.5], t: 0 },
-  3: { mode: 'grafica', A2: P2[2][1], A3: P3[2][1], x2: [1.2, 0.4], x3: [1, 0.5, 0.8], c: 1, t: 0 },
+  2: { A: P2[2][1], x: [1.5, 0.5], t: 0, tab: 'exp', step: 0 },
+  3: { mode: 'grafica', A2: P2[2][1], A3: P3[2][1], x2: [1.2, 0.4], x3: [1, 0.5, 0.8], c: 1, t: 0, tab: 'exp', step: 0 },
 };
+
+/** Completar cuadrados (A = L D Lᵀ sin intercambios): pivotes d y Lᵀ (unitriangular superior), o null si un pivote es 0. */
+function ldl(A) {
+  const n = A.length, M = A.map((r) => [...r]), d = [], Lt = identity(n);
+  for (let k = 0; k < n; k++) {
+    const p = M[k][k];
+    if (Math.abs(p) < 1e-9) {
+      // si lo que queda es todo 0, la forma ya terminó: pivotes 0
+      if (M.slice(k).every((r) => r.slice(k).every((x) => Math.abs(x) < 1e-9))) { for (let j = k; j < n; j++) d.push(0); return { d, Lt }; }
+      return null;
+    }
+    d.push(p);
+    for (let j = k + 1; j < n; j++) Lt[k][j] = M[k][j] / p;
+    for (let i = k + 1; i < n; i++) for (let j = k + 1; j < n; j++) M[i][j] -= (M[i][k] * M[k][j]) / p;
+  }
+  return { d, Lt };
+}
 
 const qf = (A, x) => dot(x, matVec(A, x));
 const snap = (x) => (Math.abs(x) < 1e-9 ? 0 : x);
@@ -188,7 +205,7 @@ export default {
       edBox.replaceChildren(me.el);
       xBox.replaceChildren(ex.el);
       preBox.replaceChildren(...(m === 2 ? P2 : P3).map(([name, M]) =>
-        h('button', { class: 'chip', onclick: () => { stop(); setA(M.map((r) => [...r])); st.t = 0; update(); } }, name)));
+        h('button', { class: 'chip', onclick: () => { stop(); setA(M.map((r) => [...r])); st.t = st.tab === 'calc' ? scene[st.step]?.t ?? 1 : 0; update(); } }, name)));
       cardC.style.display = mode() === 'nivel' ? '' : 'none';
     };
     const run = (a, b) => { stop(); st.t = a; update(); stop = animate(a, b, 1400, (v) => { st.t = v; update(); }); };
@@ -199,6 +216,78 @@ export default {
     const cQ = new TexBox(), cY = new TexBox(), cX = new TexBox(), nX = new Note();
     const cL = new TexBox(), nC = new Note(), cS = new TexBox(), nS = new Note();
 
+    // --- procedimiento ---
+    // escena de cada paso: { t: 0 | 1, anim: true si se anima hacia t, view: 'rot' (girar con Qᵀ) | 'ldl' (cizalla Lᵀ) }
+    let scene = [];
+    const calcView = () => (st.tab === 'calc' ? scene[st.step] ?? { t: 1, view: 'rot' } : { view: 'rot' });
+    const stepper = new Stepper((i) => {
+      st.step = i; stop();
+      const sc = scene[i] ?? { t: 1 };
+      if (sc.anim) run(0, 1); else { st.t = sc.t; update(); }
+    });
+    const linTex = (row, k, vars) => row.map((c, j) => [c, j]).filter(([c, j]) => j >= k && Math.abs(c) > 1e-9)
+      .map(([c, j], q) => `${c < 0 ? '- ' : q ? '+ ' : ''}${Math.abs(Math.abs(c) - 1) < 1e-9 ? '' : fmt(Math.abs(c))}${vars[j]}`).join(' ');
+    function buildProc() {
+      const M = A(), m = M.length, vars = ['x', 'y', 'z'].slice(0, m), { lams, Q } = principal(M), steps = [];
+      scene = [];
+      const add1 = (step, sc) => { steps.push(step); scene.push({ t: 0, view: 'rot', ...sc }); };
+      const cross = [];
+      for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) if (Math.abs(M[i][j]) > 1e-12) cross.push(R`${vars[i]}${vars[j]}:\ ${fmt(2 * M[i][j])} \to a_{${i + 1}${j + 1}} = a_{${j + 1}${i + 1}} = ${fmt(M[i][j])}`);
+      add1({
+        title: 'Escribir la matriz simétrica',
+        tex: [R`q = ${polyQ(M)}`, ...cross, R`A = ${tm(M)}`],
+        why: R`el coeficiente de cada cuadrado ($${vars.map((v) => `${v}^2`).join(', ')}$) va a la diagonal. El de cada término cruzado se <b>reparte a medias</b> entre las dos posiciones simétricas, porque $\vec x^{\mathsf T}A\vec x$ lo cuenta dos veces ($a_{ij}x_ix_j + a_{ji}x_jx_i$). En la escena, los términos cruzados son los que inclinan las figuras.`,
+      }, { t: 0 });
+      const sumY = lams.map((l, i) => clr(EC[i], `${fmt(l) === '1' ? '' : fmt(l) === '-1' ? '-' : fmt(l) + '\\,'}y_${i + 1}^2`)).join(' + ').replace(/\+ \\textcolor\{([^}]*)\}\{-/g, '- \\textcolor{$1}{');
+      add1({
+        title: 'Método 1: autovalores y autovectores',
+        tex: [lams.map((l, i) => clr(EC[i], R`\lambda_${i + 1} = ${fmt(l)}`)).join(R`,\ `), R`Q = ${tm(Q)}`],
+        why: R`como $A$ es simétrica, sus autovalores son reales y sus autovectores (flechas de colores) se pueden tomar <b>perpendiculares y de largo 1</b>: son las columnas de $Q$, una matriz ortogonal. Se calculan como en «Autovalores». Son los <b>ejes principales</b>: las direcciones de los ejes de las ${dim === 2 ? 'elipses o hipérbolas' : 'figuras'}.`,
+      }, { t: 0 });
+      add1({
+        title: 'Girar: y = Qᵀx',
+        tex: [R`A = QDQ^{\mathsf T} \Rightarrow q = \vec x^{\mathsf T}QDQ^{\mathsf T}\vec x = \vec y^{\mathsf T}D\vec y`, R`q = ${sumY}`],
+        why: R`con $\vec y = Q^{\mathsf T}\vec x$ se mide cada punto en los ejes principales. Como $D$ es diagonal, <b>desaparecen los términos cruzados</b>: solo queda una suma de cuadrados con los $\lambda_i$ como coeficientes. En la escena se aplica el giro $Q^{\mathsf T}$: la figura no cambia de forma, solo queda derecha.`,
+      }, { t: 1, anim: true });
+      const L = ldl(M);
+      if (L) {
+        const terms = L.d.map((d, k) => {
+          if (Math.abs(d) < 1e-12) return '';
+          const inner = linTex(L.Lt[k], k, vars), simple = !inner.includes(' ');
+          return `${d < 0 ? '-' : '+'} ${Math.abs(Math.abs(d) - 1) < 1e-9 ? '' : fmt(Math.abs(d))}${simple ? `${inner}^2` : `(${inner})^2`}`;
+        }).filter(Boolean);
+        terms[0] = terms[0]?.replace(/^\+ /, '');
+        const qTex = !terms.length ? R`q = 0` : terms.length < 3 ? R`q = ${terms.join(' ')}`
+          : R`\begin{aligned}q = {}& ${terms[0]} ${terms[1]}\\ & ${terms.slice(2).join(' ')}\end{aligned}`;
+        add1({
+          title: 'Método 2: completar cuadrados',
+          tex: [qTex, R`\text{pivotes: } ${L.d.map((d) => fmt(d)).join(',\\ ')}`],
+          why: R`se agrupa todo lo que lleva $x$ en un cuadrado, $a_{11}(x + \dots)^2$, y se resta lo que sobra; luego se repite con $y$${m === 3 ? ' y con $z$' : ''}. Es eliminación gaussiana hecha de forma simétrica ($A = LDL^{\mathsf T}$), y los coeficientes son los <b>pivotes</b>, no los autovalores. En la escena, el cambio $z_k = (\dots)$ no es un giro sino una <b>cizalla</b>: la figura también queda alineada con los ejes, pero deformada.`,
+        }, { t: 1, anim: true, view: 'ldl', Lt: L.Lt });
+      } else {
+        add1({
+          title: 'Método 2: completar cuadrados',
+          tex: R`a_{11} = 0`,
+          why: R`completar cuadrados empieza por agrupar los términos con $x$ en $a_{11}(x + \dots)^2$, y eso exige $a_{11} \neq 0$ (y lo mismo con los pivotes siguientes). Aquí no se puede tal cual: habría que reordenar o cambiar de variables antes. El método de los autovalores funciona siempre.`,
+        }, { t: 1 });
+      }
+      const [cname] = classify(lams);
+      const sg = (arr) => [arr.filter((x) => x > 1e-9).length, arr.filter((x) => x < -1e-9).length];
+      const [pl, nl] = sg(lams);
+      add1({
+        title: 'Clasificar por los signos',
+        tex: [R`\lambda: ${pl}\ (+),\ ${nl}\ (-)${L ? R`\qquad \text{pivotes: } ${sg(L.d)[0]}\ (+),\ ${sg(L.d)[1]}\ (-)` : ''}`, R`\Rightarrow\ \text{${cname}}`],
+        why: R`la forma es una suma de cuadrados con esos coeficientes, así que su signo lo deciden ellos: todos positivos es definida positiva, de ambos signos es indefinida, y algún 0 la hace semidefinida. ${L ? 'Los pivotes y los autovalores son números distintos, pero <b>siempre tienen la misma cantidad de positivos y negativos</b> (ley de inercia de Sylvester).' : ''}`,
+      }, { t: 1 });
+      stepper.set(steps, st.step);
+      st.step = stepper.i;
+    }
+    const tb = tabs([['exp', 'Explorar'], ['calc', 'Cómo se calcula']], () => st.tab, (k) => {
+      stop(); st.tab = k; tb.refresh();
+      if (k === 'calc') { buildProc(); st.t = scene[st.step]?.t ?? 1; }
+      update();
+    });
+
     panel.append(
       ...intro('Formas cuadráticas',
         R`Una forma cuadrática es $q(\vec x) = \vec x^{\mathsf T}A\vec x$ con $A$ simétrica: un polinomio cuyos términos son todos de grado 2 ($x^2$, $xy$, $y^2$…). La pregunta central es su <b>signo</b>: ¿$q$ es siempre positiva? Los autovalores de $A$ lo responden, porque en los ejes de los autovectores la forma se vuelve una suma de cuadrados <b>sin términos cruzados</b>.`),
@@ -206,6 +295,13 @@ export default {
       card('Matriz simétrica A', edBox, preBox,
         rich(R`Al cambiar $a_{ij}$ también cambia $a_{ji}$: la matriz de una forma cuadrática siempre se toma simétrica.`, 'p', 'note'), cQ.el),
       cardC,
+      tb.el, tb.panes.exp, tb.panes.calc,
+    );
+    tb.panes.calc.append(
+      rich(R`Objetivo: escribir $q$ como una <b>suma de cuadrados sin términos cruzados</b>, porque así su signo se lee directamente. Hay dos caminos: girar a los ejes principales (autovalores) o completar cuadrados (pivotes).`, 'p', 'note'),
+      stepper.el, stepper.listEl,
+    );
+    tb.panes.exp.append(
       card('Girar a los ejes principales', ts.el,
         buttonRow(button('▶ Girar', () => run(0, 1), 'primary'), button('↺ Ejes originales', () => run(1, 0))),
         phase.el, cY.el),
@@ -231,14 +327,16 @@ export default {
     );
 
     function rot() {
-      const { Q } = principal(A());
-      return rotPow(transpose(Q), st.t);
+      const { Q } = principal(A()), cv = calcView();
+      return cv.view === 'ldl' ? lerpMat(identity(A().length), cv.Lt, st.t) : rotPow(transpose(Q), st.t);
     }
 
     function update() {
       const M = A(), m = M.length, md = mode();
+      if (st.tab === 'calc') buildProc();
       const { lams, vs, Q } = principal(M);
-      const Rt = rotPow(transpose(Q), st.t);
+      const shear = calcView().view === 'ldl';
+      const Rt = rot();
       const f = (p) => qf(M, p);
       const tr = (p) => matVec(Rt, p);
       const lift = (p, z) => [...matVec(Rt, p), z];
@@ -298,19 +396,19 @@ export default {
       }
 
       axes.forEach((l, i) => {
-        if (i >= m) return l.setVisible(false);
+        if (i >= m || shear) return l.setVisible(false);
         const d = tr(vs[i]);
         l.set(md === 'grafica' ? [0, 0, 0] : Array(m).fill(0), md === 'grafica' ? [...d, 0] : d);
       });
       axArr.forEach((a, i) => {
-        if (i >= m) return a.setVisible(false);
+        if (i >= m || shear) return a.setVisible(false);
         const d = tr(vs[i]);
         a.setVisible(true).set(md === 'grafica' ? [0, 0, 0] : Array(m).fill(0), md === 'grafica' ? [...d, 0] : d)
           .setLabel(st.t > 0.98 ? R`\vec v_${i + 1} = \vec e_${i + 1}` : R`\vec v_${i + 1}`);
       });
       parab.forEach((pl, i) => {
-        pl.setVisible(md === 'grafica');
-        if (md !== 'grafica') return;
+        pl.setVisible(md === 'grafica' && !shear);
+        if (md !== 'grafica' || shear) return;
         const smax = Math.min(3, Math.abs(lams[i]) > 1e-9 ? Math.sqrt(4 / Math.abs(lams[i])) : 3);
         pl.set(Array.from({ length: 41 }, (_, k) => { const s = -smax + (2 * smax * k) / 40; return lift(scale(vs[i], s), lams[i] * s * s); }));
       });
