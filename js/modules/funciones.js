@@ -206,7 +206,7 @@ export default {
     const setGhost = (key, segs) => { if (ghostKey !== key) { ghostKey = key; ghost.set(segs()); } };
     // dimensión del vector x que se arrastra: la entrada de lo que se está mirando
     const xDim = () => (shared.tab === 'op' && shared.op === 'tr' && info.type === 'lineal' ? m : n);
-    stage.addHandle({ color: C.x, get: () => pad(shared.x[xDim()], D), set: (p) => { stop(); stopOp(); const d = xDim(); shared.x[d] = p.slice(0, d); update(); } });
+    const xh = stage.addHandle({ color: C.x, get: () => pad(shared.x[xDim()], D), set: (p) => { stop(); stopOp(); const d = xDim(); shared.x[d] = p.slice(0, d); update(); } });
 
     // rejillas para cualquier espacio de partida (ℝ² o ℝ³)
     const geoCache = {};
@@ -378,6 +378,9 @@ export default {
       hideAn();
       xg.setVisible(true); // «Analizar T» lo oculta en algunos análisis; las demás vistas siempre lo muestran
       if (shared.tab === 'op') updateOp(); else if (shared.tab === 'an') updateAn(); else updateUna();
+      // si la vista oculta la flecha de x (no interviene en ese análisis), el punto para arrastrarla queda tenue
+      const hm = xh.mesh.material, faded = !xg.shown;
+      hm.transparent = faded; hm.opacity = faded ? 0.3 : 1;
     }
 
     // ---------- «Analizar T» ----------
